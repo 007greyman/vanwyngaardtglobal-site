@@ -15,6 +15,9 @@
     supportEmail: 'support@vanwyngaardtglobal.com',
     emergencyPhone: '999',
     welfareMinutes: 60,
+    region: 'UK',
+    startPage: 'shifts', // first screen after signing in
+    loginBackground: '', // e.g. 'login-bg.jpg': a team photo shown behind the sign-in screen and menu header
   };
   const STORE_KEY = 'vwg-staff-v2';
   const COLORS = ['#16263f', '#0b6e0b', '#b86e00', '#6b3fa0', '#b5461b', '#0e7490', '#a3195b', '#4d7c0f'];
@@ -226,7 +229,7 @@
   }
 
   // ---------- UI state ----------
-  const ui = { route: 'home', params: {}, stack: [], drawer: false, slide: 0, weekOffset: 0, tsRange: 'week', adminTab: 'live', showPw: false, supportTyping: false, leaveMonth: 0, formQ: '', docTab: 'company', docQ: '', msgQ: '', regDay: null, regSite: null };
+  const ui = { route: CONFIG.startPage, params: {}, stack: [], drawer: false, slide: 0, weekOffset: 0, tsRange: 'week', adminTab: 'live', showPw: false, supportTyping: false, leaveMonth: 0, formQ: '', docTab: 'company', docQ: '', msgQ: '', regDay: null, regSite: null };
   let ticker = null;
   let scanStop = null;
 
@@ -237,7 +240,7 @@
     render(); window.scrollTo(0, 0);
   }
   function back() {
-    const prev = ui.stack.pop() || { route: 'home', params: {} };
+    const prev = ui.stack.pop() || { route: CONFIG.startPage, params: {} };
     ui.route = prev.route; ui.params = prev.params; render(); window.scrollTo(0, 0);
   }
   function toast(msg) {
@@ -283,10 +286,10 @@
   function avatar(s) { return `<div class="avatar" style="background:${s.color}">${s.photo ? `<img src="${s.photo}" alt="">` : initials(s.name)}</div>`; }
 
   const MENU = [
-    ['home', 'Home'], ['occurrence', 'Occurrence Log'], ['shifts', 'My Shifts'], ['offered', 'Offered Shifts'],
+    ['occurrence', 'Occurrence Log'], ['shifts', 'My Shifts'], ['offered', 'Offered Shifts'],
     ['leave', 'Submit Leave'], ['forms', 'Incident / Forms'], ['docs', 'Document Library'], ['messages', 'Team Message'],
     ['register', 'Electronic Sign On Register'], ['welfare', 'Welfare Check'], ['support', 'VWG Support'],
-    ['profile', 'My Profile'], ['training', 'Training Module'], ['timesheet', 'My Timesheet'],
+    ['profile', 'My Profile'], ['training', 'Training Module'], ['home', 'Dashboard'], ['timesheet', 'My Timesheet'],
   ];
   function drawer() {
     const u = me(); const e = openEntry(u.id);
@@ -310,7 +313,7 @@
           ${u.isAdmin ? `<button class="menu-item ${ui.route === 'admin' ? 'on' : ''}" data-nav="admin"><span>Admin Dashboard</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
           <button class="menu-item danger" data-action="logout"><span>Sign Out</span></button>
         </div>
-        <div class="menu-version">${CONFIG.version} - ${esc(CONFIG.company)}</div>
+        <div class="menu-version">${CONFIG.version} - ${esc(CONFIG.region)}</div>
       </nav>
     </div></div>`;
   }
@@ -358,7 +361,7 @@
     const due = welfareDue(u.id);
     const status = !e ? 'Clocked out' : onBreak(e) ? 'On break' : `On shift${e.siteId ? ' · ' + esc(siteById(e.siteId)?.name || '') : ''}`;
     const tile = (r, icon, label) => `<button class="tile" data-nav="${r}"><span class="ti">${ic(icon, 22)}</span>${label}</button>`;
-    return topbar('Home') + `<div class="page">
+    return topbar('Dashboard') + `<div class="page">
       <div class="dash-hero backdrop-art">
         <div class="dash-time" id="live-time">${fmtTime(now)}</div>
         <div class="dash-date">${DAYS[now.getDay()]} - ${dmy(now)}</div>
@@ -1225,7 +1228,7 @@
       const email = $('#email').value.trim().toLowerCase(); const pw = $('#password').value;
       const u = db.staff.find((s) => s.email.toLowerCase() === email);
       if (!u || !u.active || await hashPassword(pw, u.salt) !== u.pwHash) { $('#login-error').textContent = 'Incorrect email address or password'; return; }
-      db.session = u.id; save(); ui.showPw = false; go('home', {}, false); toast(`Welcome, ${u.name.split(' ')[0]}`);
+      db.session = u.id; save(); ui.showPw = false; go(CONFIG.startPage, {}, false); toast(`Welcome, ${u.name.split(' ')[0]}`);
     });
   }
   function bindSwipe() {
@@ -1428,12 +1431,13 @@
         alert(`Temporary password for ${s.name}:\n\n${temp}\n\nGive this to them and ask them to change it under My Profile.`);
         break;
       }
-      case 'logout': db.session = null; save(); ui.drawer = false; ui.stack = []; ui.route = 'home'; render(); break;
+      case 'logout': db.session = null; save(); ui.drawer = false; ui.stack = []; ui.route = CONFIG.startPage; render(); break;
     }
   });
 
   // ---------- Boot ----------
   (async function boot() {
+    if (CONFIG.loginBackground) document.documentElement.style.setProperty('--bg-photo', `url('${CONFIG.loginBackground}')`);
     await seed();
     render();
     if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
