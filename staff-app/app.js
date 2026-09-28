@@ -58,6 +58,7 @@
   const ic = (d, size = 22, sw = 2) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
   const I = {
     menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
     back: '<path d="M15 4l-8 8 8 8"/>',
     left: '<path d="M15 5l-7 7 7 7"/>',
     right: '<path d="M9 5l7 7-7 7"/>',
@@ -129,8 +130,15 @@
   });
   let db = load();
   function load() {
-    try { const raw = localStorage.getItem(STORE_KEY); if (raw) return Object.assign(emptyDb(), JSON.parse(raw)); } catch (e) { /* fresh */ }
+    try { const raw = localStorage.getItem(STORE_KEY); if (raw) return migrate(Object.assign(emptyDb(), JSON.parse(raw))); } catch (e) { /* fresh */ }
     return emptyDb();
+  }
+  // Fill in fields added after data was first saved on a device.
+  function migrate(d) {
+    d.staff.forEach((s) => { if (s.licence === undefined) s.licence = ''; if (s.leaveAllowance === undefined) s.leaveAllowance = 28; });
+    d.documents.forEach((x) => { if (!x.scope) { x.scope = 'company'; x.refId = null; x.requireSign = true; } });
+    d.messages.forEach((m) => { if (!m.thread) m.thread = 'all'; });
+    return d;
   }
   function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch (e) { toast('Could not save on this device'); } }
 
@@ -151,7 +159,8 @@
         email: name.split(' ')[0].toLowerCase() + '@' + CONFIG.domain,
         phone: '07700 900' + pad(100 + i).slice(-3), startDate: ymd(addDays(new Date(), -200 * (i + 1))),
         color: COLORS[i % COLORS.length], salt, pwHash: await hashPassword('Password1', salt),
-        photo: null, emergency: '', address: '',
+        photo: null, emergency: '', address: '', leaveAllowance: 28,
+        licence: isAdmin ? '' : '1017' + String(4000000000 + i * 1234567).slice(0, 12),
       });
     }
     db.sites = [
@@ -177,13 +186,17 @@
     db.shifts.push({ id: uid(), staffId: db.staff[0].id, siteId: db.sites[0].id, date: ymd(new Date()), start: '07:00', end: '19:00', notes: '', status: 'confirmed' });
     [2, 4, 9].forEach((d, k) => db.shifts.push({ id: uid(), staffId: null, siteId: db.sites[k % db.sites.length].id, date: ymd(addDays(monday, d)), start: k === 1 ? '19:00' : '07:00', end: k === 1 ? '07:00' : '19:00', notes: 'Cover needed', status: 'offered' }));
     const now = new Date().toISOString();
+    const [ng, hr, ct] = db.sites;
     db.documents = [
-      { id: uid(), title: 'Code of Conduct', category: 'Policy', date: now, body: 'All staff must act with honesty, integrity and professionalism.\n\n1. Treat customers, visitors and colleagues with respect.\n2. Follow all lawful instructions from supervisors.\n3. Never consume alcohol or drugs before or during a shift.\n4. Keep all site information confidential.' },
-      { id: uid(), title: 'Uniform & Appearance', category: 'Policy', date: now, body: 'Full company uniform must be worn on every shift, including your ID badge and hi-vis where required. Uniform must be clean and in good repair.' },
-      { id: uid(), title: 'Emergency Procedures', category: 'Safety', date: now, body: `In an emergency:\n\n1. Make yourself safe.\n2. Call ${CONFIG.emergencyPhone}.\n3. Inform the site control room.\n4. Record everything in the Occurrence Log as soon as it is safe to do so.` },
-      { id: uid(), title: 'Assignment Instructions — Northgate', category: 'Site', date: now, body: 'Patrol the perimeter every 2 hours, scanning each checkpoint QR code. Gate 2 is locked from 22:00 to 06:00. All vehicles must be logged on the sign-on register.' },
+      { id: uid(), title: 'Code of Conduct', scope: 'company', refId: null, requireSign: true, date: now, body: 'All staff must act with honesty, integrity and professionalism.\n\n1. Treat customers, visitors and colleagues with respect.\n2. Follow all lawful instructions from supervisors.\n3. Never consume alcohol or drugs before or during a shift.\n4. Keep all site information confidential.' },
+      { id: uid(), title: 'Uniform & Appearance', scope: 'company', refId: null, requireSign: false, date: now, body: 'Full company uniform must be worn on every shift, including your ID badge and hi-vis where required. Uniform must be clean and in good repair.' },
+      { id: uid(), title: 'Emergency Procedures', scope: 'company', refId: null, requireSign: true, date: now, body: `In an emergency:\n\n1. Make yourself safe.\n2. Call ${CONFIG.emergencyPhone}.\n3. Inform the site control room.\n4. Record everything in the Occurrence Log as soon as it is safe to do so.` },
+      { id: uid(), title: 'Customer Service Standards', scope: 'customer', refId: ng.customer, requireSign: false, date: now, body: 'Greet every driver and visitor. Check paperwork against the delivery schedule before opening any gate.' },
+      { id: uid(), title: 'Assignment Instructions', scope: 'site', refId: ng.id, requireSign: true, date: now, body: 'Patrol the perimeter every 2 hours, scanning each checkpoint QR code. Gate 2 is locked from 22:00 to 06:00. All vehicles must be logged on the sign-on register.' },
+      { id: uid(), title: 'Site Map', scope: 'site', refId: hr.id, requireSign: false, date: now, body: 'Gatehouse at the main entrance on Harbour Road. Service yard behind Units 3–6. Fire assembly point: car park row A.' },
+      { id: uid(), title: 'Reception Camera Systems', scope: 'site', refId: ct.id, requireSign: false, date: now, body: 'CCTV monitors are at the reception desk. Recording is retained for 30 days. Only the building manager may export footage.' },
     ];
-    db.messages.push({ id: uid(), staffId: db.staff[1].id, text: `Morning team 👋 Welcome to the new ${CONFIG.shortName} app. Please check your shifts for the next two weeks.`, time: now });
+    db.messages.push({ id: uid(), staffId: db.staff[1].id, thread: 'all', text: `Morning team 👋 Welcome to the new ${CONFIG.shortName} app. Please check your shifts for the next two weeks.`, time: now });
     save();
   }
 
@@ -215,7 +228,7 @@
   }
 
   // ---------- UI state ----------
-  const ui = { route: 'home', params: {}, stack: [], drawer: false, slide: 0, weekOffset: 0, tsRange: 'week', adminTab: 'live', regTab: 'on', showPw: false };
+  const ui = { route: 'home', params: {}, stack: [], drawer: false, slide: 0, weekOffset: 0, tsRange: 'week', adminTab: 'live', showPw: false, leaveMonth: 0, formQ: '', docTab: 'company', docQ: '', msgQ: '', regDay: null, regSite: null };
   let ticker = null;
   let scanStop = null;
 
@@ -258,7 +271,7 @@
     const l = left === 'back'
       ? `<button class="tb-btn" data-action="back">${ic(I.back, 24)}Back</button>`
       : `<button class="tb-btn" data-action="open-drawer" aria-label="Menu">${ic(I.menu, 26)}</button>`;
-    return `<header class="topbar"><div class="topbar-inner">${l}<h1>${esc(title)}</h1><div class="tb-right">${right}</div></div></header>`;
+    return `<header class="topbar"><div class="topbar-inner">${l}<h1${title.length > 22 ? ' style="font-size:16px"' : ''}>${esc(title)}</h1><div class="tb-right">${right}</div></div></header>`;
   }
   const refreshBtn = `<button class="tb-btn" data-action="refresh" aria-label="Refresh">${ic(I.refresh, 24, 2.4)}</button>`;
   function weekNav() {
@@ -444,47 +457,109 @@
   }
 
   // ---------- Leave ----------
+  const leaveDays = (l) => Math.round((parseYmd(l.to) - parseYmd(l.from)) / 86400000) + 1;
+  function leaveBalance(u) {
+    const year = String(new Date().getFullYear());
+    const used = db.leave.filter((l) => l.staffId === u.id && l.status === 'approved' && /annual/i.test(l.type) && l.from.startsWith(year)).reduce((t, l) => t + leaveDays(l), 0);
+    return (u.leaveAllowance || 0) - used;
+  }
   function viewLeave() {
-    const mine = db.leave.filter((l) => l.staffId === db.session).sort((a, b) => b.from.localeCompare(a.from));
-    const today = ymd(new Date());
-    return topbar('Submit Leave') + `<div class="page"><div class="pad">
-      <div class="card"><form class="form" id="leave-form">
-        <div class="field"><label>Leave type</label><select class="input" name="type"><option>Annual Leave</option><option>Sick Leave</option><option>Compassionate Leave</option><option>Unpaid Leave</option><option>Training</option></select></div>
-        <div class="row"><div class="field"><label>From</label><input class="input" type="date" name="from" value="${today}" required></div>
-        <div class="field"><label>To</label><input class="input" type="date" name="to" value="${today}" required></div></div>
-        <div class="field"><label>Reason</label><textarea class="input" name="reason" placeholder="Optional"></textarea></div>
-        <div class="error"></div>
-        <button class="btn btn-gold btn-block" type="submit">Submit Leave</button>
-      </form></div>
-      <div class="card"><h3>My Requests</h3>${mine.length ? mine.map((l) => leaveRow(l)).join('') : '<div class="empty">No leave requests</div>'}</div>
-    </div></div>`;
+    const u = me();
+    const base = new Date(); base.setDate(1); base.setMonth(base.getMonth() + ui.leaveMonth);
+    const y = base.getFullYear(); const m = base.getMonth();
+    const lead = (new Date(y, m, 1).getDay() + 6) % 7;
+    const count = new Date(y, m + 1, 0).getDate();
+    const mine = db.leave.filter((l) => l.staffId === u.id && l.status !== 'declined');
+    const cells = [];
+    for (let i = 0; i < lead; i++) cells.push('<div class="cal-cell"></div>');
+    for (let d = 1; d <= count; d++) {
+      const key = ymd(new Date(y, m, d));
+      const l = mine.find((x) => key >= x.from && key <= x.to);
+      const cls = l ? (l.status === 'approved' ? 'lv-approved' : 'lv-pending') : '';
+      cells.push(`<button class="cal-cell" data-action="leave-day" data-date="${key}"><span class="cal-num ${cls} ${key === ymd(new Date()) ? 'today' : ''}">${d}</span></button>`);
+    }
+    while (cells.length % 7) cells.push('<div class="cal-cell"></div>');
+    const rows = [];
+    for (let i = 0; i < cells.length; i += 7) rows.push(`<div class="cal-row">${cells.slice(i, i + 7).join('')}</div>`);
+    const list = db.leave.filter((l) => l.staffId === u.id).sort((a, b) => b.from.localeCompare(a.from));
+    return topbar('Submit Leave', { right: refreshBtn }) + `<div class="page white">
+      <div class="cal-head"><button data-action="month-prev">Previous</button><b>${MON[m].toUpperCase()} ${y}</b><button data-action="month-next">Next</button></div>
+      <div class="cal-dow">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => `<span>${d}</span>`).join('')}</div>
+      ${rows.join('')}
+      <div class="legend">
+        <h3>Draft / For Approval</h3><div class="lg"><span class="lg-dot"></span>Leave</div>
+        <h3>Approved</h3><div class="lg"><span class="lg-dot filled"></span>Leave</div>
+        <h3>Fixed Leave Balance</h3><div class="lg">${leaveBalance(u).toFixed(2)} Days</div>
+      </div>
+      <div class="pad"><button class="btn btn-gold btn-block" data-action="leave-day" data-date="${ymd(new Date())}">${ic(I.plus, 18)}Request Leave</button></div>
+      ${list.length ? `<div class="pad" style="padding-top:0"><h3 style="margin:6px 4px">My Requests</h3><div class="card">${list.map((l) => leaveRow(l)).join('')}</div></div>` : ''}
+    </div>`;
   }
   function leaveRow(l, admin = false) {
     const who = admin ? staffById(l.staffId) : null;
-    const days = Math.round((parseYmd(l.to) - parseYmd(l.from)) / 86400000) + 1;
+    const days = leaveDays(l);
     return `<div class="item"><div class="item-main"><div class="item-title">${who ? esc(who.name) + ' · ' : ''}${esc(l.type)} · ${days} day${days > 1 ? 's' : ''}</div>
       <div class="item-sub">${dmy(parseYmd(l.from))} - ${dmy(parseYmd(l.to))}${l.reason ? ' · ' + esc(l.reason) : ''}</div></div>
       ${admin && l.status === 'pending' ? approveBtns('leave', l.id) : statusPill(l.status)}</div>`;
   }
   const approveBtns = (kind, id) => `<div class="row" style="flex:0 0 auto;gap:6px"><button class="btn btn-green btn-sm" data-action="${kind}-approve" data-id="${id}">✓</button><button class="btn btn-red btn-sm" data-action="${kind}-decline" data-id="${id}">✕</button></div>`;
+  function sheetLeave(date) {
+    const existing = db.leave.find((l) => l.staffId === db.session && l.status !== 'declined' && date >= l.from && date <= l.to);
+    if (existing) {
+      openSheet(`<h2>${esc(existing.type)}</h2>
+        <p style="margin-top:0">${dmy(parseYmd(existing.from))} - ${dmy(parseYmd(existing.to))} · ${leaveDays(existing)} day(s)</p>
+        <p>Status : ${statusPill(existing.status)}</p>${existing.reason ? `<p class="muted">${esc(existing.reason)}</p>` : ''}
+        ${existing.status === 'pending' ? `<button class="btn btn-red btn-block" data-action="leave-cancel" data-id="${existing.id}">Cancel Request</button>` : ''}
+        <button class="btn btn-ghost btn-block" data-dismiss style="margin-top:10px">Close</button>`);
+      return;
+    }
+    openSheet(`<h2>Request Leave</h2><form class="form">
+      <div class="field"><label>Leave type</label><select class="input" name="type"><option>Annual Leave</option><option>Sick Leave</option><option>Compassionate Leave</option><option>Unpaid Leave</option><option>Training</option></select></div>
+      <div class="row"><div class="field"><label>From</label><input class="input" type="date" name="from" value="${date}" required></div>
+      <div class="field"><label>To</label><input class="input" type="date" name="to" value="${date}" required></div></div>
+      <div class="field"><label>Reason</label><textarea class="input" name="reason" placeholder="Optional"></textarea></div>
+      <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Submit Leave</button></form>`, (d) => {
+      if (d.to < d.from) return 'End date is before start date';
+      if (db.leave.some((l) => l.staffId === db.session && l.status !== 'declined' && d.from <= l.to && d.to >= l.from)) return 'You already have leave booked on those dates';
+      db.leave.push({ id: uid(), staffId: db.session, type: d.type, from: d.from, to: d.to, reason: d.reason.trim(), status: 'pending', created: new Date().toISOString() });
+      save(); render(); toast('Leave request submitted');
+    });
+  }
 
   // ---------- Forms ----------
+  const formRef = (i) => i.ref || 'F' + String(db.incidents.indexOf(i) + 1).padStart(5, '0');
   function viewForms() {
-    const mine = db.incidents.filter((i) => i.staffId === db.session).sort((a, b) => b.time.localeCompare(a.time));
-    return topbar('Incident / Forms') + `<div class="page white">
-      ${FORM_TYPES.map((t) => `<button class="menu-item" data-action="form-new" data-type="${esc(t)}"><span>${esc(t)}</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>`).join('')}
-      <div class="pad"><h3 style="margin:10px 4px">My Submissions</h3>
-      ${mine.length ? `<div class="card">${mine.map((i) => incidentRow(i)).join('')}</div>` : '<div class="empty">Nothing submitted yet.</div>'}</div>
+    const u = me(); const q = ui.formQ.trim().toLowerCase();
+    const list = db.incidents.filter((i) => u.isAdmin || i.staffId === u.id)
+      .filter((i) => { if (!q) return true; const site = siteById(i.siteId) || {}; return [i.form, i.title, formRef(i), site.name, site.customer, site.city, site.address].join(' ').toLowerCase().includes(q); })
+      .sort((a, b) => b.time.localeCompare(a.time));
+    return topbar('Incident / Forms', { right: `<button class="tb-btn" data-action="form-pick">Add</button>` }) + `<div class="page white">
+      <div class="searchbar">${ic(I.search, 22)}<input id="form-q" placeholder="Location, Site, ID, or Form Name" value="${esc(ui.formQ)}" autocomplete="off"></div>
+      <div id="form-list">${list.map((i) => incidentSection(i, u.isAdmin)).join('')}</div>
     </div>`;
+  }
+  function incidentSection(i, admin) {
+    const site = siteById(i.siteId); const who = staffById(i.staffId);
+    return `<div class="section"><div class="body">
+      <h3>${esc(i.form)}</h3><p>${esc(i.title)}</p>
+      <p class="l">ID : ${formRef(i)} · ${fmtStamp(i.time)}</p>
+      <p class="l">Site : ${esc(site?.name || '-')}${admin && who ? ` · ${esc(who.name)}` : ''}</p>
+      <p class="l">${esc(i.details)}</p>
+      <p class="l" style="margin-top:8px">Status : ${statusPill(i.status)} <span class="small muted">${esc(cap(i.severity))} priority</span></p>
+    </div>${admin && i.status === 'open' ? `<button class="btn btn-green btn-sm" data-action="incident-resolve" data-id="${i.id}">Resolve</button>` : ''}</div>`;
   }
   function incidentRow(i, admin = false) {
     const site = siteById(i.siteId); const who = admin ? staffById(i.staffId) : null;
-    return `<div class="item"><div class="item-main"><div class="item-title">${esc(i.form)} · ${esc(i.title)}</div>
+    return `<div class="item"><div class="item-main"><div class="item-title">${formRef(i)} · ${esc(i.form)} · ${esc(i.title)}</div>
       <div class="item-sub">${fmtStamp(i.time)}${site ? ' · ' + esc(site.name) : ''}${who ? ' · ' + esc(who.name) : ''} · ${esc(cap(i.severity))} priority</div>
       <div class="small" style="margin-top:4px">${esc(i.details)}</div></div>
       ${admin && i.status === 'open' ? `<button class="btn btn-green btn-sm" data-action="incident-resolve" data-id="${i.id}">Resolve</button>` : statusPill(i.status)}</div>`;
   }
   const siteOptions = (sel) => `<option value="">— None —</option>` + db.sites.map((s) => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+  function sheetFormPick() {
+    openSheet(`<h2>Select Form</h2>${FORM_TYPES.map((t) => `<button class="menu-item" data-action="form-new" data-type="${esc(t)}"><span>${esc(t)}</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>`).join('')}
+      <button class="btn btn-ghost btn-block" data-dismiss style="margin-top:14px">Cancel</button>`);
+  }
   function sheetForm(type) {
     const e = openEntry(db.session);
     const now = new Date();
@@ -497,19 +572,39 @@
       <div class="field"><label>Details</label><textarea class="input" name="details" required placeholder="What happened, who was involved, action taken"></textarea></div>
       <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Submit</button></form>`, (d) => {
       const time = new Date(`${d.date}T${d.time}`).toISOString();
-      db.incidents.push({ id: uid(), staffId: db.session, form: type, siteId: d.siteId || null, time, title: d.title.trim(), severity: d.severity, details: d.details.trim(), status: 'open' });
-      addOccurrence(`${type} submitted: ${d.title.trim()}`, 'form', d.siteId || null);
-      save(); render(); toast(`${type} submitted`);
+      const ref = 'F' + String(db.incidents.length + 1).padStart(5, '0');
+      db.incidents.push({ id: uid(), ref, staffId: db.session, form: type, siteId: d.siteId || null, time, title: d.title.trim(), severity: d.severity, details: d.details.trim(), status: 'open' });
+      addOccurrence(`${type} ${ref} submitted: ${d.title.trim()}`, 'form', d.siteId || null);
+      save(); render(); toast(`${type} ${ref} submitted`);
     });
   }
 
   // ---------- Documents ----------
+  const DOC_TABS = [['shift', 'Shift Docs'], ['company', 'Company'], ['customer', 'Customer'], ['site', 'Site']];
+  function docHeading(d) {
+    if (d.scope === 'site') return siteById(d.refId)?.name || 'Site';
+    if (d.scope === 'customer') return d.refId || 'Customer';
+    return CONFIG.company;
+  }
+  const docSigned = (d) => db.docReads.some((r) => r.docId === d.id && r.staffId === db.session);
+  const docStatus = (d) => !d.requireSign ? 'View Only' : docSigned(d) ? 'Signed' : 'Signature Required';
+  function docsForTab(tab) {
+    if (tab !== 'shift') return db.documents.filter((d) => d.scope === tab);
+    // Shift docs: documents for the sites and customers of my shifts from today onwards.
+    const today = ymd(new Date());
+    const sites = new Set(db.shifts.filter((s) => s.staffId === db.session && s.date >= today).map((s) => s.siteId));
+    const customers = new Set([...sites].map((id) => siteById(id)?.customer).filter(Boolean));
+    return db.documents.filter((d) => (d.scope === 'site' && sites.has(d.refId)) || (d.scope === 'customer' && customers.has(d.refId)));
+  }
   function viewDocs() {
-    const u = me();
-    const read = (d) => db.docReads.some((r) => r.docId === d.id && r.staffId === u.id);
-    return topbar('Document Library') + `<div class="page white">
-      ${u.isAdmin ? `<div class="pad"><button class="btn btn-gold btn-block" data-action="doc-new">${ic(I.plus, 18)}Add Document</button></div>` : ''}
-      ${db.documents.length ? db.documents.map((d) => `<button class="menu-item" style="height:auto;padding:12px 16px" data-nav="doc" data-id="${d.id}"><span><b>${esc(d.title)}</b><br><span class="small muted">${esc(d.category)} · ${read(d) ? '✓ Read' : 'Unread'}</span></span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>`).join('') : '<div class="empty-state">No documents yet.</div>'}
+    const u = me(); const q = ui.docQ.trim().toLowerCase();
+    const list = docsForTab(ui.docTab).filter((d) => !q || [d.title, docHeading(d), d.body].join(' ').toLowerCase().includes(q));
+    return topbar('Document Library', { right: u.isAdmin ? `<button class="tb-btn" data-action="doc-new">Add</button>` : '' }) + `<div class="page white">
+      <div class="tabs">${DOC_TABS.map(([k, label]) => `<button class="${ui.docTab === k ? 'on' : ''}" data-doctab="${k}">${label}</button>`).join('')}</div>
+      <div class="pad" style="padding-bottom:4px"><input class="keyword" id="doc-q" placeholder="Enter Keyword here..." value="${esc(ui.docQ)}" autocomplete="off"></div>
+      <div id="doc-list">${list.length ? list.map((d) => `<button class="section" data-nav="doc" data-id="${d.id}"><div class="body">
+        <h3 style="margin:10px 0 12px">${esc(docHeading(d))}</h3><p style="font-size:17px">${esc(d.title)}</p>
+        <p class="l">Status : &nbsp;<b>${docStatus(d)}</b></p></div><span class="chev">${ic(I.right, 22, 1.6)}</span></button>`).join('') : '<div class="empty" style="padding-top:30vh">No documents found.</div>'}</div>
     </div>`;
   }
   function viewDoc() {
@@ -518,36 +613,119 @@
     const u = me();
     const r = db.docReads.find((x) => x.docId === d.id && x.staffId === u.id);
     return topbar('Document', { left: 'back' }) + `<div class="page white"><div class="pad">
-      <h2 style="margin:6px 0 2px">${esc(d.title)}</h2><div class="small muted" style="margin-bottom:14px">${esc(d.category)} · updated ${dmy(new Date(d.date))}</div>
+      <div class="small muted">${esc(docHeading(d))}</div>
+      <h2 style="margin:4px 0 2px">${esc(d.title)}</h2><div class="small muted" style="margin-bottom:14px">Updated ${dmy(new Date(d.date))} · ${docStatus(d)}</div>
       <div class="doc-body">${esc(d.body)}</div>
-      <div style="margin-top:24px">${r ? `<div class="muted small">✓ You confirmed you read this on ${fmtStamp(r.time)}</div>` : `<button class="btn btn-gold btn-block" data-action="doc-read" data-id="${d.id}">I have read and understood</button>`}</div>
-      ${u.isAdmin ? `<button class="btn btn-ghost btn-block" style="margin-top:10px;color:var(--red)" data-action="doc-delete" data-id="${d.id}">${ic(I.trash, 18)}Delete document</button>` : ''}
+      ${d.requireSign ? `<div style="margin-top:24px">${r ? `<div class="muted small">✓ You signed this on ${fmtStamp(r.time)}</div>` : `<button class="btn btn-gold btn-block" data-action="doc-read" data-id="${d.id}">I have read and understood</button>`}</div>` : ''}
+      ${u.isAdmin ? `<div class="small muted" style="margin-top:18px">${d.requireSign ? `Signed by ${db.docReads.filter((x) => x.docId === d.id).length} of ${db.staff.filter((s) => s.active).length} staff` : ''}</div>
+        <button class="btn btn-ghost btn-block" style="margin-top:10px;color:var(--red)" data-action="doc-delete" data-id="${d.id}">${ic(I.trash, 18)}Delete document</button>` : ''}
     </div></div>`;
+  }
+  function sheetDocNew() {
+    const customers = [...new Set(db.sites.map((s) => s.customer))];
+    openSheet(`<h2>Add Document</h2><form class="form">
+      <div class="field"><label>Title</label><input class="input" name="title" required></div>
+      <div class="field"><label>Library</label><select class="input" name="scope" id="doc-scope"><option value="company">Company</option><option value="customer">Customer</option><option value="site">Site</option></select></div>
+      <div class="field" id="doc-cust" hidden><label>Customer</label><select class="input" name="customer">${customers.map((c) => `<option>${esc(c)}</option>`).join('')}</select></div>
+      <div class="field" id="doc-site" hidden><label>Site</label><select class="input" name="siteId">${db.sites.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Content</label><textarea class="input" name="body" style="height:180px" required></textarea></div>
+      <label class="check"><input type="checkbox" name="requireSign">Staff must sign "read and understood"</label>
+      <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Publish</button></form>`, (d) => {
+      const refId = d.scope === 'site' ? d.siteId : d.scope === 'customer' ? d.customer : null;
+      if (d.scope !== 'company' && !refId) return 'Choose where this document belongs';
+      db.documents.unshift({ id: uid(), title: d.title.trim(), scope: d.scope, refId, requireSign: !!d.requireSign, body: d.body, date: new Date().toISOString() });
+      ui.docTab = d.scope; save(); render(); toast('Document published');
+    });
+    const sel = $('#doc-scope');
+    sel.addEventListener('change', () => { $('#doc-cust').hidden = sel.value !== 'customer'; $('#doc-site').hidden = sel.value !== 'site'; });
   }
 
   // ---------- Team message ----------
+  function threadsFor(u) {
+    const list = [{ id: 'all', name: `All Staff`, kind: 'group' }];
+    db.sites.forEach((s) => list.push({ id: 'site:' + s.id, name: s.name, kind: 'site' }));
+    db.staff.filter((s) => s.active && s.id !== u.id).forEach((s) => list.push({ id: 'dm:' + [u.id, s.id].sort().join(':'), name: s.name, kind: 'dm', staff: s }));
+    return list.map((t) => {
+      const msgs = db.messages.filter((m) => (m.thread || 'all') === t.id);
+      return { ...t, last: msgs.sort((a, b) => b.time.localeCompare(a.time))[0], count: msgs.length };
+    });
+  }
+  function threadName(id) {
+    if (id === 'all') return 'All Staff';
+    if (id.startsWith('site:')) return siteById(id.slice(5))?.name || 'Site';
+    const other = id.split(':').slice(1).find((x) => x !== db.session);
+    return staffById(other)?.name || 'Direct Message';
+  }
   function viewMessages() {
-    const u = me();
-    const list = db.messages.slice().sort((a, b) => a.time.localeCompare(b.time)).slice(-200);
-    return topbar('Team Message') + `<div class="page"><div class="chat" id="chat">
-      ${list.length ? list.map((m) => { const s = staffById(m.staffId); const mine = m.staffId === u.id; return `<div class="bubble ${mine ? 'me' : ''}">${mine ? '' : `<div class="who">${esc(s?.name || 'Former staff')}</div>`}${esc(m.text)}<div class="when">${fmtStamp(m.time)}</div></div>`; }).join('') : '<div class="empty">No messages yet. Say hello!</div>'}
+    const u = me(); const q = ui.msgQ.trim().toLowerCase();
+    let list = threadsFor(u);
+    list = q ? list.filter((t) => t.name.toLowerCase().includes(q) || db.messages.some((m) => (m.thread || 'all') === t.id && m.text.toLowerCase().includes(q)))
+      : list.filter((t) => t.count || t.kind !== 'dm');
+    list.sort((a, b) => (b.last?.time || '').localeCompare(a.last?.time || ''));
+    const icon = (t) => t.kind === 'dm' ? avatar(t.staff) : `<div class="avatar" style="background:var(--navy);color:var(--gold-light)">${ic(t.kind === 'site' ? I.shield : I.chat, 20)}</div>`;
+    return topbar('Team Message', { right: refreshBtn }) + `<div class="page white">
+      <div class="searchbar">${ic(I.search, 22)}<input id="msg-q" value="${esc(ui.msgQ)}" autocomplete="off" aria-label="Search people, sites or messages" placeholder="Search"></div>
+      <div id="msg-list">${list.map((t) => `<button class="thread" data-nav="thread" data-id="${t.id}">${icon(t)}<div class="item-main"><div class="item-title">${esc(t.name)}</div>
+        <div class="item-sub">${t.last ? esc((t.last.staffId === u.id ? 'You: ' : '') + t.last.text).slice(0, 60) : 'No messages yet'}</div></div>
+        <div class="small muted">${t.last ? fmtTime(new Date(t.last.time)) : ''}</div></button>`).join('')}</div>
+    </div>`;
+  }
+  function viewThread() {
+    const u = me(); const id = ui.params.id || 'all';
+    const list = db.messages.filter((m) => (m.thread || 'all') === id).sort((a, b) => a.time.localeCompare(b.time)).slice(-200);
+    return topbar(threadName(id), { left: 'back' }) + `<div class="page"><div class="chat" id="chat">
+      ${list.length ? list.map((m) => { const s = staffById(m.staffId); const mine = m.staffId === u.id; return `<div class="bubble ${mine ? 'me' : ''}">${mine || id.startsWith('dm:') ? '' : `<div class="who">${esc(s?.name || 'Former staff')}</div>`}${esc(m.text)}<div class="when">${fmtStamp(m.time)}</div></div>`; }).join('') : '<div class="empty">No messages yet. Say hello!</div>'}
     </div></div>
     <form class="composer" id="composer"><input name="text" placeholder="Type a message" autocomplete="off" aria-label="Message"><button type="submit" aria-label="Send">${ic(I.send, 20)}</button></form>`;
   }
 
-  // ---------- Sign on register ----------
+  // ---------- Electronic sign on register ----------
+  function registerSite() {
+    if (ui.regSite && siteById(ui.regSite)) return ui.regSite;
+    const e = openEntry(db.session);
+    const today = db.shifts.find((s) => s.staffId === db.session && s.date === ymd(new Date()));
+    return e?.siteId || today?.siteId || db.sites[0]?.id || null;
+  }
+  function registerRows(siteId, day) {
+    const ids = new Set();
+    db.shifts.filter((s) => s.siteId === siteId && s.date === day && s.staffId && s.status !== 'cancelled').forEach((s) => ids.add(s.staffId));
+    const entries = db.entries.filter((e) => e.siteId === siteId && ymd(new Date(e.clockIn)) === day);
+    entries.forEach((e) => ids.add(e.staffId));
+    return [...ids].map((id) => {
+      const mine = entries.filter((e) => e.staffId === id).sort((a, b) => a.clockIn.localeCompare(b.clockIn));
+      const last = mine[mine.length - 1];
+      return { staff: staffById(id), on: mine[0] ? fmtTime(new Date(mine[0].clockIn)) : '', off: last?.clockOut ? fmtTime(new Date(last.clockOut)) : 'N/A' };
+    }).filter((r) => r.staff);
+  }
   function viewRegister() {
-    const today = ymd(new Date());
-    const list = db.register.filter((r) => ui.regTab === 'on' ? !r.outAt : ymd(new Date(r.inAt)) === today)
-      .sort((a, b) => b.inAt.localeCompare(a.inAt));
-    return topbar('Sign On Register') + `<div class="page"><div class="pad">
-      <button class="btn btn-gold btn-block" data-action="visitor-new" style="margin-bottom:12px">${ic(I.plus, 18)}Sign In Visitor</button>
-      <div class="seg"><button class="${ui.regTab === 'on' ? 'on' : ''}" data-reg="on">On Site (${db.register.filter((r) => !r.outAt).length})</button><button class="${ui.regTab === 'today' ? 'on' : ''}" data-reg="today">Today</button></div>
-      ${list.length ? `<div class="card">${list.map((r) => { const site = siteById(r.siteId); return `<div class="item"><div class="item-main"><div class="item-title">${esc(r.name)}${r.company ? ' · ' + esc(r.company) : ''}</div>
-        <div class="item-sub">${esc(r.purpose || '')}${r.vehicle ? ' · 🚗 ' + esc(r.vehicle) : ''}${site ? ' · ' + esc(site.name) : ''}</div>
-        <div class="item-sub">In ${fmtTime(new Date(r.inAt))}${r.outAt ? ' · Out ' + fmtTime(new Date(r.outAt)) : ''}</div></div>
-        ${r.outAt ? statusPill('signed out') : `<button class="btn btn-navy btn-sm" data-action="visitor-out" data-id="${r.id}">Sign Out</button>`}</div>`; }).join('')}</div>` : `<div class="empty">${ui.regTab === 'on' ? 'Nobody is signed in.' : 'No visitors today.'}</div>`}
-    </div></div>`;
+    const [from] = weekRange();
+    const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
+    if (!days.some((d) => ymd(d) === ui.regDay)) ui.regDay = days.some((d) => ymd(d) === ymd(new Date())) ? ymd(new Date()) : ymd(days[0]);
+    const siteId = registerSite(); const site = siteById(siteId);
+    const rows = site ? registerRows(siteId, ui.regDay) : [];
+    const visitors = db.register.filter((r) => r.siteId === siteId && ymd(new Date(r.inAt)) === ui.regDay).sort((a, b) => b.inAt.localeCompare(a.inAt));
+    const staffPic = (s) => `<div class="reg-pic">${s.photo ? `<img src="${s.photo}" alt="">` : DEFAULT_AVATAR}</div>`;
+    return topbar('Electronic Sign On Register', { right: `<button class="tb-btn" data-action="register-share">Share</button>` }) + weekNav() + `<div class="page white">
+      <div class="daystrip">${days.map((d) => `<button data-regday="${ymd(d)}"><span>${DAYS[d.getDay()].slice(0, 3)}</span><b class="${ymd(d) === ui.regDay ? 'sel' : ''}">${pad(d.getDate())}</b></button>`).join('')}</div>
+      <button class="reg-site" data-action="register-site">Site Name : ${esc(site?.name || 'No sites')}</button>
+      ${rows.length ? rows.map((r) => `<div class="reg-row">${staffPic(r.staff)}<div class="reg-main">
+          <div><b>Staff Name :</b>&nbsp; ${esc(r.staff.name)}</div><div><b>Licence :</b>&nbsp; ${esc(r.staff.licence || '')}</div>
+          <div class="reg-times"><div><b>Sign On Time</b><span>${r.on}</span></div><div><b>Sign Out Time</b><span>${r.on ? r.off : 'N/A'}</span></div></div>
+        </div></div>`).join('') : '<div class="empty" style="padding:40px 20px">No staff rostered or signed on for this day.</div>'}
+      <div class="pad"><div class="card-head" style="margin:14px 4px 8px"><h3>Visitors</h3><button class="btn btn-gold btn-sm" data-action="visitor-new">${ic(I.plus, 16)}Sign In Visitor</button></div>
+        ${visitors.length ? `<div class="card">${visitors.map((r) => `<div class="item"><div class="item-main"><div class="item-title">${esc(r.name)}${r.company ? ' · ' + esc(r.company) : ''}</div>
+          <div class="item-sub">${esc(r.purpose || '')}${r.vehicle ? ' · 🚗 ' + esc(r.vehicle) : ''}</div><div class="item-sub">In ${fmtTime(new Date(r.inAt))}${r.outAt ? ' · Out ' + fmtTime(new Date(r.outAt)) : ''}</div></div>
+          ${r.outAt ? statusPill('signed out') : `<button class="btn btn-navy btn-sm" data-action="visitor-out" data-id="${r.id}">Sign Out</button>`}</div>`).join('')}</div>` : '<div class="empty">No visitors.</div>'}
+      </div>
+    </div>`;
+  }
+  async function shareRegister() {
+    const site = siteById(registerSite()); if (!site) return;
+    const rows = registerRows(site.id, ui.regDay);
+    const text = `Electronic Sign On Register\nSite: ${site.name}\nDate: ${dayTitle(ui.regDay)}\n\n` +
+      (rows.map((r) => `${r.staff.name}${r.staff.licence ? ' (Licence ' + r.staff.licence + ')' : ''} — On: ${r.on || '-'}  Off: ${r.on ? r.off : 'N/A'}`).join('\n') || 'No staff signed on.');
+    if (navigator.share) { try { await navigator.share({ title: `Sign On Register — ${site.name}`, text }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+    download(`sign-on-register-${slug(site.name)}-${ui.regDay}.csv`, toCsv([['Site', 'Date', 'Staff name', 'Licence', 'Sign on', 'Sign out'], ...rows.map((r) => [site.name, dmy(parseYmd(ui.regDay)), r.staff.name, r.staff.licence, r.on, r.on ? r.off : 'N/A'])]));
   }
 
   // ---------- Welfare ----------
@@ -592,6 +770,7 @@
       <div class="pad"><div class="card"><div class="info-grid">
         <div><span>Employee no.</span><b>${esc(u.empNo)}</b></div><div><span>Department</span><b>${esc(u.dept || '-')}</b></div>
         <div><span>Email</span><b>${esc(u.email)}</b></div><div><span>Phone</span><b>${esc(u.phone || '-')}</b></div>
+        <div><span>SIA licence</span><b>${esc(u.licence || '-')}</b></div><div><span>Leave balance</span><b>${leaveBalance(u).toFixed(2)} days</b></div>
         <div><span>Start date</span><b>${u.startDate ? dmy(parseYmd(u.startDate)) : '-'}</b></div><div><span>Emergency contact</span><b>${esc(u.emergency || '-')}</b></div>
         <div style="grid-column:1/-1"><span>Address</span><b>${esc(u.address || '-')}</b></div>
       </div></div>
@@ -795,13 +974,14 @@
   function nextEmpNo() { return 'VWG' + String(db.staff.reduce((m, s) => Math.max(m, parseInt(s.empNo.replace(/\D/g, ''), 10) || 0), 0) + 1).padStart(3, '0'); }
   function sheetStaff(s) {
     const isNew = !s;
-    s = s || { name: '', empNo: nextEmpNo(), email: '', role: 'Security Officer', dept: 'Security', phone: '', startDate: ymd(new Date()), rate: 0, isAdmin: false, active: true };
+    s = s || { licence: '', leaveAllowance: 28, name: '', empNo: nextEmpNo(), email: '', role: 'Security Officer', dept: 'Security', phone: '', startDate: ymd(new Date()), rate: 0, isAdmin: false, active: true };
     openSheet(`<h2>${isNew ? 'Add Staff Member' : 'Edit Staff Member'}</h2><form class="form">
       <div class="field"><label>Full name</label><input class="input" name="name" value="${esc(s.name)}" required></div>
       <div class="field"><label>Email (used to sign in)</label><input class="input" type="email" name="email" value="${esc(s.email)}" required></div>
       <div class="row"><div class="field"><label>Employee no.</label><input class="input" name="empNo" value="${esc(s.empNo)}" required></div><div class="field"><label>Start date</label><input class="input" type="date" name="startDate" value="${esc(s.startDate)}"></div></div>
       <div class="row"><div class="field"><label>Role</label><input class="input" name="role" value="${esc(s.role)}"></div><div class="field"><label>Department</label><input class="input" name="dept" value="${esc(s.dept)}"></div></div>
       <div class="row"><div class="field"><label>Phone</label><input class="input" type="tel" name="phone" value="${esc(s.phone)}"></div><div class="field"><label>Hourly rate (${CONFIG.currency})</label><input class="input" type="number" min="0" step="0.01" name="rate" value="${esc(s.rate)}"></div></div>
+      <div class="row"><div class="field"><label>SIA licence no.</label><input class="input" name="licence" value="${esc(s.licence || '')}" inputmode="numeric"></div><div class="field"><label>Leave allowance (days)</label><input class="input" type="number" min="0" step="0.5" name="leaveAllowance" value="${esc(s.leaveAllowance ?? 28)}"></div></div>
       <div class="field"><label>${isNew ? 'Password' : 'New password (leave blank to keep)'}</label><input class="input" name="password" minlength="8" ${isNew ? 'required' : ''} placeholder="At least 8 characters"></div>
       <label class="check"><input type="checkbox" name="isAdmin" ${s.isAdmin ? 'checked' : ''}>Admin access</label>
       <label class="check"><input type="checkbox" name="active" ${s.active ? 'checked' : ''}>Active (can sign in)</label>
@@ -812,7 +992,7 @@
       if (db.staff.some((x) => x.empNo === empNo && x.id !== s.id)) return 'That employee number is already in use';
       if (s.id === db.session && (!d.isAdmin || !d.active)) return 'You cannot remove your own admin access';
       const target = isNew ? { id: uid(), color: COLORS[db.staff.length % COLORS.length], photo: null, emergency: '', address: '' } : staffById(s.id);
-      Object.assign(target, { name: d.name.trim(), email, empNo, role: d.role.trim(), dept: d.dept.trim(), phone: d.phone.trim(), startDate: d.startDate, rate: Number(d.rate) || 0, isAdmin: !!d.isAdmin, active: !!d.active });
+      Object.assign(target, { name: d.name.trim(), email, empNo, role: d.role.trim(), dept: d.dept.trim(), phone: d.phone.trim(), startDate: d.startDate, rate: Number(d.rate) || 0, licence: d.licence.trim(), leaveAllowance: Number(d.leaveAllowance) || 0, isAdmin: !!d.isAdmin, active: !!d.active });
       if (d.password) { target.salt = uid(); target.pwHash = await hashPassword(d.password, target.salt); }
       if (isNew) db.staff.push(target);
       save(); render(); toast('Saved');
@@ -897,7 +1077,7 @@
   }
 
   // ---------- Render ----------
-  const VIEWS = { home: viewHome, shifts: viewShifts, offered: viewOffered, shift: viewShift, occurrence: viewOccurrence, leave: viewLeave, forms: viewForms, docs: viewDocs, doc: viewDoc, messages: viewMessages, register: viewRegister, welfare: viewWelfare, support: viewSupport, profile: viewProfile, training: viewTraining, module: viewModule, timesheet: viewTimesheet, admin: viewAdmin };
+  const VIEWS = { home: viewHome, shifts: viewShifts, offered: viewOffered, shift: viewShift, occurrence: viewOccurrence, leave: viewLeave, forms: viewForms, docs: viewDocs, doc: viewDoc, messages: viewMessages, thread: viewThread, register: viewRegister, welfare: viewWelfare, support: viewSupport, profile: viewProfile, training: viewTraining, module: viewModule, timesheet: viewTimesheet, admin: viewAdmin };
   function render() {
     clearInterval(ticker);
     const app = $('#app');
@@ -933,19 +1113,17 @@
     });
   }
   function bindPage() {
-    const lf = $('#leave-form');
-    if (lf) lf.addEventListener('submit', (ev) => {
-      ev.preventDefault(); const d = Object.fromEntries(new FormData(lf).entries());
-      if (d.to < d.from) { lf.querySelector('.error').textContent = 'End date is before start date'; return; }
-      db.leave.push({ id: uid(), staffId: db.session, type: d.type, from: d.from, to: d.to, reason: d.reason.trim(), status: 'pending', created: new Date().toISOString() });
-      save(); render(); toast('Leave request submitted');
-    });
+    const live = (id, key, listId) => {
+      const el = document.getElementById(id); if (!el) return;
+      el.addEventListener('input', () => { ui[key] = el.value; const tmp = document.createElement('div'); tmp.innerHTML = VIEWS[ui.route](); document.getElementById(listId).innerHTML = tmp.querySelector('#' + listId).innerHTML; });
+    };
+    live('form-q', 'formQ', 'form-list'); live('doc-q', 'docQ', 'doc-list'); live('msg-q', 'msgQ', 'msg-list');
     const cf = $('#composer');
     if (cf) {
       const chat = $('#chat'); window.scrollTo(0, document.body.scrollHeight); if (chat) chat.scrollIntoView(false);
       cf.addEventListener('submit', (ev) => {
         ev.preventDefault(); const text = cf.text.value.trim(); if (!text) return;
-        db.messages.push({ id: uid(), staffId: db.session, text, time: new Date().toISOString() }); save(); render();
+        db.messages.push({ id: uid(), thread: ui.params.id || 'all', staffId: db.session, text, time: new Date().toISOString() }); save(); render();
         const inp = $('#composer input'); if (inp) inp.focus();
       });
     }
@@ -967,10 +1145,11 @@
   document.addEventListener('click', async (ev) => {
     const nav = ev.target.closest('[data-nav]');
     // Detail pages get a Back button; top-level pages reset history and show the menu button.
-    if (nav) { closeSheet(); go(nav.dataset.nav, { id: nav.dataset.id }, ['shift', 'doc', 'module'].includes(nav.dataset.nav)); return; }
+    if (nav) { closeSheet(); go(nav.dataset.nav, { id: nav.dataset.id }, ['shift', 'doc', 'module', 'thread'].includes(nav.dataset.nav)); return; }
     const ts = ev.target.closest('[data-ts]'); if (ts) { ui.tsRange = ts.dataset.ts; render(); return; }
     const at = ev.target.closest('[data-admin]'); if (at) { ui.adminTab = at.dataset.admin; render(); return; }
-    const rg = ev.target.closest('[data-reg]'); if (rg) { ui.regTab = rg.dataset.reg; render(); return; }
+    const dt = ev.target.closest('[data-doctab]'); if (dt) { ui.docTab = dt.dataset.doctab; render(); return; }
+    const rd = ev.target.closest('[data-regday]'); if (rd) { ui.regDay = rd.dataset.regday; render(); return; }
     const btn = ev.target.closest('[data-action]'); if (!btn) return;
     const id = btn.dataset.id;
     switch (btn.dataset.action) {
@@ -1015,20 +1194,24 @@
           addOccurrence(d.text.trim(), 'note', d.siteId || null); save(); render(); toast('Entry saved');
         });
         break;
-      case 'form-new': sheetForm(btn.dataset.type); break;
-      case 'doc-new':
-        openSheet(`<h2>Add Document</h2><form class="form"><div class="field"><label>Title</label><input class="input" name="title" required></div>
-          <div class="field"><label>Category</label><select class="input" name="category"><option>Policy</option><option>Safety</option><option>Site</option><option>HR</option></select></div>
-          <div class="field"><label>Content</label><textarea class="input" name="body" style="height:180px" required></textarea></div><div class="error"></div><button class="btn btn-gold btn-block" type="submit">Publish</button></form>`, (d) => {
-          db.documents.unshift({ id: uid(), title: d.title.trim(), category: d.category, body: d.body, date: new Date().toISOString() }); save(); render(); toast('Document published');
-        });
+      case 'form-pick': sheetFormPick(); break;
+      case 'form-new': closeSheet(); sheetForm(btn.dataset.type); break;
+      case 'month-prev': ui.leaveMonth--; render(); break;
+      case 'month-next': ui.leaveMonth++; render(); break;
+      case 'leave-day': sheetLeave(btn.dataset.date); break;
+      case 'leave-cancel': db.leave = db.leave.filter((l) => l.id !== id); save(); closeSheet(); render(); toast('Leave request cancelled'); break;
+      case 'register-share': shareRegister(); break;
+      case 'register-site':
+        openSheet(`<h2>Select Site</h2>${db.sites.map((x) => `<button class="menu-item" data-action="register-pick" data-id="${x.id}"><span>${esc(x.name)}<br><span class="small muted">${esc(x.customer)}</span></span></button>`).join('')}`);
         break;
+      case 'register-pick': ui.regSite = id; closeSheet(); render(); break;
+      case 'doc-new': sheetDocNew(); break;
       case 'doc-read': db.docReads.push({ docId: id, staffId: db.session, time: new Date().toISOString() }); save(); render(); toast('Thanks — recorded'); break;
       case 'doc-delete': if (confirm('Delete this document?')) { db.documents = db.documents.filter((d) => d.id !== id); save(); back(); } break;
       case 'visitor-new':
         openSheet(`<h2>Sign In Visitor</h2><form class="form"><div class="field"><label>Full name</label><input class="input" name="name" required></div>
           <div class="field"><label>Company</label><input class="input" name="company"></div><div class="field"><label>Purpose of visit</label><input class="input" name="purpose" required></div>
-          <div class="row"><div class="field"><label>Vehicle reg</label><input class="input" name="vehicle" autocapitalize="characters"></div><div class="field"><label>Site</label><select class="input" name="siteId">${siteOptions(openEntry(db.session)?.siteId)}</select></div></div>
+          <div class="row"><div class="field"><label>Vehicle reg</label><input class="input" name="vehicle" autocapitalize="characters"></div><div class="field"><label>Site</label><select class="input" name="siteId">${siteOptions(registerSite())}</select></div></div>
           <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Sign In</button></form>`, (d) => {
           db.register.push({ id: uid(), name: d.name.trim(), company: d.company.trim(), purpose: d.purpose.trim(), vehicle: d.vehicle.trim().toUpperCase(), siteId: d.siteId || null, inAt: new Date().toISOString(), outAt: null, byStaff: db.session });
           addOccurrence(`Visitor signed in: ${d.name.trim()}`, 'note', d.siteId || null); save(); render(); toast('Visitor signed in');

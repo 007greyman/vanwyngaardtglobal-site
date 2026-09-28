@@ -19,11 +19,11 @@ It is a Progressive Web App built with plain HTML, CSS and JavaScript. There is 
 | Occurrence Log | Timestamped site log. Clock-ins, checkpoints, visitors and forms are added to it automatically. |
 | My Shifts | Week picker (`Sep 28 - Oct 04`) and shift cards. Tapping one opens **My Roster Detail**: notes, **Open in Maps**, **View Contacts**, clock in, and offer the shift for cover. |
 | Offered Shifts | Open shifts for each week. **Accept Shift** sends the shift to a manager to confirm. |
-| Submit Leave | Leave request form and the status of your requests. |
-| Incident / Forms | Incident Report, Near Miss, Patrol Report, Vehicle Check, Lost Property, Maintenance Issue. |
-| Document Library | Policies and site instructions, with "I have read and understood" sign-off. Admins can add documents. |
-| Team Message | Group chat. |
-| Electronic Sign On Register | Sign visitors in and out (name, company, purpose, vehicle, site). |
+| Submit Leave | Month calendar (Previous / Next). Tap a day to request leave. Pending leave shows as a hollow blue circle and approved leave as a filled circle. Shows the fixed leave balance (allowance minus approved annual leave). |
+| Incident / Forms | Search by location, site, ID or form name. **Add** opens a list of forms: Incident Report, Near Miss, Patrol Report, Vehicle Check, Lost Property, Maintenance Issue. Each submission gets an ID such as `F00001`. |
+| Document Library | Tabs: **Shift Docs** (documents for the sites and customers of your upcoming shifts), **Company**, **Customer**, **Site**. Keyword search. Status shows View Only, Signature Required or Signed. Admins use **Add**. |
+| Team Message | Search, plus conversations: All Staff, one group per site, and direct messages. |
+| Electronic Sign On Register | Week picker and a day strip. For the chosen site (tap the site name to change it), each rostered or signed-on staff member with their licence number and sign-on / sign-out times. **Share** sends the register, or downloads a CSV where sharing isn't supported. Visitor sign-in is further down the page. |
 | Welfare Check | **I'M OK** check-in, due every 60 minutes while on shift, and **I NEED HELP**, which alerts managers and calls 999. |
 | VWG Support | Call or email support, emergency number, and an FAQ. |
 | My Profile | Staff details, editing your own contact details, changing your password. |
