@@ -1,29 +1,35 @@
 /* Van Wyngaardt Global — Staff app
- * Single-page, offline-first. All data is stored in this device's localStorage.
+ * Single-page, offline-first. Data is kept in this device's localStorage and, when
+ * Supabase is configured in config.js, shared live between all staff phones.
  */
 (function () {
   'use strict';
 
-  const CONFIG = {
+  // Defaults; config.js (window.VWG_CONFIG) overrides any of these.
+  const CONFIG = Object.assign({
     company: 'Van Wyngaardt Global',
     shortName: 'VWG Staff',
     domain: 'vanwyngaardtglobal.com',
-    version: 'v1.1.0(2)',
+    version: 'v1.2.0(3)',
     currency: '£',
-    supportPhone: '+44 0000 000000',
-    supportPhoneOoh: '+44 0000 000001',
-    supportEmail: 'support@vanwyngaardtglobal.com',
+    supportPhone: '',
+    supportPhoneOoh: '',
+    supportEmail: '',
     emergencyPhone: '999',
     welfareMinutes: 60,
     region: 'UK',
-    startPage: 'shifts', // first screen after signing in
-    loginBackground: '', // e.g. 'login-bg.jpg': a team photo shown behind the sign-in screen and menu header
-  };
-  const STORE_KEY = 'vwg-staff-v2';
+    startPage: 'shifts',
+    loginBackground: '',
+    supabaseUrl: '',
+    supabaseAnonKey: '',
+  }, window.VWG_CONFIG || {}, { version: 'v1.2.0(3)' });
+  const CLOUD = !!(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
+  const STORE_KEY = CLOUD ? 'vwg-staff-cloud' : 'vwg-staff-v2';
   const COLORS = ['#16263f', '#0b6e0b', '#b86e00', '#6b3fa0', '#b5461b', '#0e7490', '#a3195b', '#4d7c0f'];
 
   // ---------- Helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
+  const randomPin = () => String(1000 + Math.floor(Math.random() * 9000));
   const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const pad = (n) => String(n).padStart(2, '0');
@@ -127,7 +133,15 @@
   });
   let db = load();
   function load() {
-    try { const raw = localStorage.getItem(STORE_KEY); if (raw) { const saved = JSON.parse(raw); return migrate(Object.assign(emptyDb(), saved), saved); } } catch (e) { /* fresh */ }
+    let raw = null;
+    try {
+      raw = localStorage.getItem(STORE_KEY);
+      if (raw) { const saved = JSON.parse(raw); return migrate(Object.assign(emptyDb(), saved), saved); }
+    } catch (e) {
+      // Never start over silently on top of real data: keep a copy so it can be restored.
+      console.error('Could not load saved data', e);
+      try { if (raw) localStorage.setItem(STORE_KEY + '-backup-' + Date.now(), raw); } catch (e2) { /* storage full */ }
+    }
     return emptyDb();
   }
   // Fill in fields added after data was first saved on a device.
@@ -142,10 +156,11 @@
     d.trainingVersion = 2;
     d.documents.forEach((x) => { if (!x.scope) { x.scope = 'company'; x.refId = null; x.requireSign = true; } });
     d.messages.forEach((m) => { if (!m.thread) m.thread = 'all'; });
+    [...d.docReads, ...d.trainingDone].forEach((x) => { if (!x.id) x.id = uid(); });
     return d;
   }
-  const randomPin = () => String(1000 + Math.floor(Math.random() * 9000));
-  function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch (e) { toast('Could not save on this device'); } }
+  function localSave() { try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch (e) { toast('Could not save on this device'); } }
+  function save() { localSave(); if (CLOUD) cloudSchedulePush(); }
 
   async function seed() {
     if (db.staff.length) return;
@@ -271,7 +286,11 @@
     }
     return root;
   }
-  function closeSheet() { if (scanStop) { scanStop(); scanStop = null; } $('#sheet-root').innerHTML = ''; }
+  function closeSheet() {
+    if (scanStop) { scanStop(); scanStop = null; }
+    $('#sheet-root').innerHTML = '';
+    if (CLOUD && cloud.renderWanted) { cloud.renderWanted = false; setTimeout(requestRender); }
+  }
 
   // ---------- Chrome ----------
   function topbar(title, { left = 'menu', right = '' } = {}) {
@@ -353,7 +372,7 @@
       <div class="or">OR</div>
       <button class="btn-pill" data-action="domain-login">Log In with Domain</button>
       <div class="version">${CONFIG.version}</div>
-      <div class="demo-hint">Demo: <b>jack@${CONFIG.domain}</b> (admin) or <b>emma@${CONFIG.domain}</b> · password <b>Password1</b></div>
+      ${CLOUD ? '' : `<div class="demo-hint">Demo: <b>jack@${CONFIG.domain}</b> (admin) or <b>emma@${CONFIG.domain}</b> · password <b>Password1</b></div>`}
     </div>`;
   }
 
@@ -816,7 +835,7 @@
         <label class="cam cam-lg" aria-label="Change photo">${ic(I.camera, 26, 2.2)}<input type="file" accept="image/*" id="photo-input" hidden></label></div></div>
       ${row('First Name', 'first', first, 'required autocomplete="given-name"')}
       ${row('Last Name', 'last', rest.join(' '), 'autocomplete="family-name"')}
-      ${row('Email', 'email', u.email, 'type="email" required autocapitalize="off"')}
+      ${row('Email', 'email', u.email, `type="email" required autocapitalize="off"${CLOUD ? ' readonly title="Ask a manager to change your sign-in email"' : ''}`)}
       ${row('Mobile', 'phone', u.phone, 'type="tel" autocomplete="tel"')}
       ${row('Pin', 'pin', u.pin || '', 'inputmode="numeric" pattern="\\d{4}" maxlength="4"')}
       ${link('mydocs', 'My Documents')}${link('compliance', 'My Compliance')}${link('companycompliance', 'Company Compliance')}
@@ -1116,7 +1135,9 @@
       <div class="row"><div class="field"><label>Role</label><input class="input" name="role" value="${esc(s.role)}"></div><div class="field"><label>Department</label><input class="input" name="dept" value="${esc(s.dept)}"></div></div>
       <div class="row"><div class="field"><label>Phone</label><input class="input" type="tel" name="phone" value="${esc(s.phone)}"></div><div class="field"><label>Hourly rate (${CONFIG.currency})</label><input class="input" type="number" min="0" step="0.01" name="rate" value="${esc(s.rate)}"></div></div>
       <div class="row"><div class="field"><label>SIA licence no.</label><input class="input" name="licence" value="${esc(s.licence || '')}" inputmode="numeric"></div><div class="field"><label>Leave allowance (days)</label><input class="input" type="number" min="0" step="0.5" name="leaveAllowance" value="${esc(s.leaveAllowance ?? 28)}"></div></div>
-      <div class="field"><label>${isNew ? 'Password' : 'New password (leave blank to keep)'}</label><input class="input" name="password" minlength="8" ${isNew ? 'required' : ''} placeholder="At least 8 characters"></div>
+      ${CLOUD ? `<p class="small muted" style="margin:0">${isNew ? 'After saving, they open the app, tap <b>Forgot Password → New staff</b> and create their own password.' : ''}</p>
+        ${isNew ? '' : `<button type="button" class="btn btn-ghost btn-block" data-action="send-reset" data-id="${s.id}">Email them a password reset link</button>`}`
+      : `<div class="field"><label>${isNew ? 'Password' : 'New password (leave blank to keep)'}</label><input class="input" name="password" minlength="8" ${isNew ? 'required' : ''} placeholder="At least 8 characters"></div>`}
       <label class="check"><input type="checkbox" name="isAdmin" ${s.isAdmin ? 'checked' : ''}>Admin access</label>
       <label class="check"><input type="checkbox" name="active" ${s.active ? 'checked' : ''}>Active (can sign in)</label>
       <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Save</button>
@@ -1125,9 +1146,9 @@
       if (db.staff.some((x) => x.email.toLowerCase() === email && x.id !== s.id)) return 'That email is already in use';
       if (db.staff.some((x) => x.empNo === empNo && x.id !== s.id)) return 'That employee number is already in use';
       if (s.id === db.session && (!d.isAdmin || !d.active)) return 'You cannot remove your own admin access';
-      const target = isNew ? { id: uid(), color: COLORS[db.staff.length % COLORS.length], photo: null, emergency: '', address: '' } : staffById(s.id);
+      const target = isNew ? { id: uid(), color: COLORS[db.staff.length % COLORS.length], photo: null, emergency: '', address: '', pin: randomPin(), compliance: {} } : staffById(s.id);
       Object.assign(target, { name: d.name.trim(), email, empNo, role: d.role.trim(), dept: d.dept.trim(), phone: d.phone.trim(), startDate: d.startDate, rate: Number(d.rate) || 0, licence: d.licence.trim(), leaveAllowance: Number(d.leaveAllowance) || 0, isAdmin: !!d.isAdmin, active: !!d.active });
-      if (d.password) { target.salt = uid(); target.pwHash = await hashPassword(d.password, target.salt); }
+      if (!CLOUD && d.password) { target.salt = uid(); target.pwHash = await hashPassword(d.password, target.salt); }
       if (isNew) db.staff.push(target);
       save(); render(); toast('Saved');
     });
@@ -1139,9 +1160,16 @@
       <div class="field"><label>Confirm new password</label><input class="input" type="password" name="pw2" required></div>
       <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Update Password</button></form>`, async (d) => {
       const u = me();
-      if (await hashPassword(d.old, u.salt) !== u.pwHash) return 'Current password is incorrect';
       if (d.pw.length < 8) return 'Use at least 8 characters';
       if (d.pw !== d.pw2) return 'Passwords do not match';
+      if (CLOUD) {
+        const check = await cloud.sb.auth.signInWithPassword({ email: u.email, password: d.old });
+        if (check.error) return 'Current password is incorrect';
+        const { error } = await cloud.sb.auth.updateUser({ password: d.pw });
+        if (error) return error.message;
+        toast('Password changed'); return;
+      }
+      if (await hashPassword(d.old, u.salt) !== u.pwHash) return 'Current password is incorrect';
       u.salt = uid(); u.pwHash = await hashPassword(d.pw, u.salt); save(); toast('Password changed');
     });
   }
@@ -1246,6 +1274,247 @@
     });
   }
 
+  // ---------- Shared database (Supabase) ----------
+  // With CONFIG.supabaseUrl/supabaseAnonKey set, every change is saved to one shared
+  // database and other phones receive it within seconds. Each record is a row in the
+  // `records` table (see supabase/schema.sql), which also enforces who may change what.
+  // The copy in localStorage keeps the app usable offline; unsent changes are retried.
+  const SYNCED = ['staff', 'sites', 'shifts', 'entries', 'leave', 'incidents', 'occurrences', 'documents',
+    'docReads', 'messages', 'register', 'welfare', 'trainingDone', 'training', 'support', 'staffDocs'];
+  const SYNCED_KEY = STORE_KEY + '-synced';
+  const cloud = { sb: null, synced: {}, pushTimer: null, pushing: null, renderWanted: false, channel: null };
+  try { cloud.synced = JSON.parse(localStorage.getItem(SYNCED_KEY) || '{}'); } catch (e) { cloud.synced = {}; }
+
+  // Password hashes are only used on-device; Supabase handles passwords in cloud mode.
+  const rowData = (c, item) => { if (c !== 'staff') return item; const { salt, pwHash, ...rest } = item; return rest; };
+  const persistSynced = () => { try { localStorage.setItem(SYNCED_KEY, JSON.stringify(cloud.synced)); } catch (e) { /* cache only */ } };
+  const isNetworkError = (err) => !err?.code || /fetch|network|timeout/i.test(err.message || '');
+
+  async function cloudInit() {
+    try {
+      const createClient = window.VWG_TEST_SUPABASE || (await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm')).createClient;
+      cloud.sb = createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+    } catch (e) {
+      toast('Offline — showing the last saved copy');
+      return;
+    }
+    cloud.sb.auth.onAuthStateChange((event) => { if (event === 'PASSWORD_RECOVERY') setTimeout(sheetNewPassword, 300); });
+    window.addEventListener('online', () => cloudPush());
+    setInterval(() => { if (cloudDirty()) cloudPush(); }, 30000);
+    const { data } = await cloud.sb.auth.getSession();
+    if (data?.session) {
+      const err = await cloudAfterSignIn(data.session.user.email);
+      if (err) toast(err);
+    } else {
+      db.session = null;
+    }
+  }
+
+  // Rows that differ from what the server last confirmed.
+  function cloudChanges() {
+    const upserts = []; const deletes = [];
+    SYNCED.forEach((c) => {
+      const prev = cloud.synced[c] || {}; const seen = new Set();
+      (db[c] || []).forEach((item) => {
+        if (!item.id) item.id = uid();
+        seen.add(item.id);
+        const json = JSON.stringify(rowData(c, item));
+        if (prev[item.id] !== json) upserts.push({ c, id: item.id, json });
+      });
+      Object.keys(prev).forEach((id) => { if (!seen.has(id)) deletes.push({ c, id }); });
+    });
+    return { upserts, deletes };
+  }
+  const cloudDirty = () => { const { upserts, deletes } = cloudChanges(); return upserts.length + deletes.length > 0; };
+
+  function cloudSchedulePush() {
+    if (!cloud.sb) return;
+    clearTimeout(cloud.pushTimer);
+    cloud.pushTimer = setTimeout(cloudPush, 400);
+  }
+
+  async function cloudPush() {
+    if (!cloud.sb || !db.session) return;
+    if (cloud.pushing) { await cloud.pushing; }
+    cloud.pushing = (async () => {
+      const { upserts, deletes } = cloudChanges();
+      if (!upserts.length && !deletes.length) return;
+      let rejected = null;
+      // Staff first, so a brand-new manager exists before the rest of their records.
+      const order = (c) => (c === 'staff' ? 0 : 1);
+      const byCollection = {};
+      upserts.sort((a, b) => order(a.c) - order(b.c)).forEach((u) => { (byCollection[u.c] = byCollection[u.c] || []).push(u); });
+      for (const [c, rows] of Object.entries(byCollection)) {
+        const { error } = await cloud.sb.from('records').upsert(rows.map((r) => ({ collection: c, id: r.id, data: JSON.parse(r.json) })));
+        if (error) { if (isNetworkError(error)) return; rejected = error; continue; }
+        cloud.synced[c] = cloud.synced[c] || {};
+        rows.forEach((r) => { cloud.synced[c][r.id] = r.json; });
+      }
+      for (const d of deletes) {
+        const { error } = await cloud.sb.from('records').delete().match({ collection: d.c, id: d.id });
+        if (error) { if (isNetworkError(error)) return; rejected = error; continue; }
+        delete cloud.synced[d.c][d.id];
+      }
+      persistSynced();
+      if (rejected) {
+        // The server refused a change (not allowed for this user): go back to the server's copy.
+        toast(`Not saved: ${rejected.message}`);
+        await cloudPull();
+        render();
+      }
+    })();
+    try { await cloud.pushing; } finally { cloud.pushing = null; }
+  }
+
+  async function cloudPull() {
+    const all = Object.fromEntries(SYNCED.map((c) => [c, []]));
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await cloud.sb.from('records').select('collection,id,data').order('collection').order('id').range(from, from + 999);
+      if (error) throw error;
+      data.forEach((r) => { if (all[r.collection]) all[r.collection].push(r.data); });
+      if (data.length < 1000) break;
+    }
+    SYNCED.forEach((c) => {
+      db[c] = all[c];
+      cloud.synced[c] = Object.fromEntries(all[c].map((x) => [x.id, JSON.stringify(x)]));
+    });
+    persistSynced(); localSave();
+  }
+
+  function cloudSubscribe() {
+    if (cloud.channel) return;
+    cloud.channel = cloud.sb.channel('vwg-records')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'records' }, onRemoteChange)
+      .subscribe();
+  }
+
+  function onRemoteChange(p) {
+    const row = p.eventType === 'DELETE' ? p.old : p.new;
+    const c = row?.collection; if (!SYNCED.includes(c)) return;
+    const list = db[c]; const idx = list.findIndex((x) => x.id === row.id);
+    const synced = (cloud.synced[c] = cloud.synced[c] || {});
+    // A change made on this phone that hasn't reached the server yet wins; it will be sent next.
+    if (idx >= 0 && JSON.stringify(rowData(c, list[idx])) !== synced[row.id]) return;
+    if (p.eventType === 'DELETE') {
+      if (idx >= 0) list.splice(idx, 1);
+      delete synced[row.id];
+    } else {
+      if (idx >= 0) list[idx] = row.data; else list.push(row.data);
+      synced[row.id] = JSON.stringify(row.data);
+    }
+    persistSynced(); localSave();
+    if (c === 'staff' && !me()?.active) { cloudSignOut('Your account has been deactivated.'); return; }
+    requestRender();
+  }
+
+  // Re-draw with new data, but never under someone who is typing or has a form open.
+  function requestRender() {
+    const busy = $('#sheet-root').children.length || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+    if (busy) cloud.renderWanted = true; else render();
+  }
+
+  async function cloudSignIn(email, password) {
+    const { error } = await cloud.sb.auth.signInWithPassword({ email, password });
+    if (error) return /confirm/i.test(error.message) ? 'Please confirm your email first. Check your inbox for the link.' : 'Incorrect email address or password';
+    return cloudAfterSignIn(email);
+  }
+
+  async function cloudAfterSignIn(email) {
+    try {
+      await cloudPush();
+      await cloudPull();
+    } catch (e) {
+      if (!db.staff.length) return 'Could not reach the server. Check your connection and try again.';
+    }
+    let u = db.staff.find((s) => s.email.toLowerCase() === email.toLowerCase());
+    if (!u && !db.staff.length) u = await cloudBootstrap(email);
+    if (!u || !u.active) {
+      await cloud.sb.auth.signOut();
+      db.session = null; localSave();
+      return "This email isn't set up as a staff member yet. Ask your manager to add you.";
+    }
+    db.session = u.id; localSave();
+    cloudSubscribe();
+    return null;
+  }
+
+  // The very first person to sign in to an empty database becomes the manager.
+  async function cloudBootstrap(email) {
+    const name = (prompt(`Welcome! You're the first person to sign in, so you'll be the manager.\n\nYour full name:`) || '').trim() || email.split('@')[0];
+    const u = {
+      id: uid(), empNo: 'VWG001', name, email: email.toLowerCase(), role: 'Manager', dept: 'Management', isAdmin: true, active: true,
+      rate: 0, phone: '', startDate: ymd(new Date()), color: COLORS[0], photo: null, emergency: '', address: '',
+      leaveAllowance: 28, pin: randomPin(), licence: '', compliance: {},
+    };
+    db.staff.push(u);
+    db.session = u.id;
+    if (!db.training.length) db.training = defaultTraining();
+    await cloudPush();
+    return u;
+  }
+
+  async function cloudSignOut(message) {
+    try { await cloudPush(); } catch (e) { /* best effort */ }
+    try { await cloud.sb.auth.signOut(); } catch (e) { /* already signed out */ }
+    if (cloud.channel) { cloud.sb.removeChannel(cloud.channel); cloud.channel = null; }
+    // Don't leave company data on a shared phone after signing out.
+    db = Object.assign(emptyDb(), { onboarded: true });
+    cloud.synced = {}; persistSynced(); localSave();
+    ui.drawer = false; ui.stack = []; ui.route = CONFIG.startPage;
+    render();
+    if (message) toast(message);
+  }
+
+  function sheetNewPassword() {
+    openSheet(`<h2>Set a New Password</h2><form class="form">
+      <div class="field"><label>New password</label><input class="input" type="password" name="pw" minlength="8" required autocomplete="new-password"></div>
+      <div class="field"><label>Confirm new password</label><input class="input" type="password" name="pw2" required autocomplete="new-password"></div>
+      <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Save Password</button></form>`, async (d) => {
+      if (d.pw.length < 8) return 'Use at least 8 characters';
+      if (d.pw !== d.pw2) return 'Passwords do not match';
+      const { data, error } = await cloud.sb.auth.updateUser({ password: d.pw });
+      if (error) return error.message;
+      history.replaceState(null, '', location.pathname);
+      const err = await cloudAfterSignIn(data.user.email);
+      render(); toast(err || 'Password saved — you are signed in');
+    });
+  }
+
+  function sheetForgotCloud() {
+    const email = esc($('#email')?.value || '');
+    openSheet(`<h2>Forgot Password</h2>
+      <div class="seg"><button class="on" type="button" data-pwtab="reset">Reset password</button><button type="button" data-pwtab="new">New staff</button></div>
+      <form class="form" id="pw-reset"><p class="muted" style="margin:0">We'll email you a link to choose a new password.</p>
+        <div class="field"><label>Email Address</label><input class="input" type="email" name="email" value="${email}" required></div>
+        <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Send Reset Link</button></form>
+      <form class="form" id="pw-new" hidden><p class="muted" style="margin:0">First time using the app? Once your manager has added you, create your password here.</p>
+        <div class="field"><label>Work email</label><input class="input" type="email" name="email" value="${email}" required></div>
+        <div class="field"><label>Choose a password</label><input class="input" type="password" name="pw" minlength="8" required autocomplete="new-password"></div>
+        <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Create My Account</button></form>`);
+    const root = $('#sheet-root');
+    root.querySelectorAll('[data-pwtab]').forEach((b) => b.addEventListener('click', () => {
+      root.querySelectorAll('[data-pwtab]').forEach((x) => x.classList.toggle('on', x === b));
+      root.querySelector('#pw-reset').hidden = b.dataset.pwtab !== 'reset';
+      root.querySelector('#pw-new').hidden = b.dataset.pwtab !== 'new';
+    }));
+    const redirectTo = location.origin + location.pathname;
+    root.querySelector('#pw-reset').addEventListener('submit', async (ev) => {
+      ev.preventDefault(); const f = ev.target;
+      const { error } = await cloud.sb.auth.resetPasswordForEmail(f.email.value.trim(), { redirectTo });
+      if (error) { f.querySelector('.error').textContent = error.message; return; }
+      closeSheet(); toast('Check your email for the reset link');
+    });
+    root.querySelector('#pw-new').addEventListener('submit', async (ev) => {
+      ev.preventDefault(); const f = ev.target;
+      if (f.pw.value.length < 8) { f.querySelector('.error').textContent = 'Use at least 8 characters'; return; }
+      const { data, error } = await cloud.sb.auth.signUp({ email: f.email.value.trim(), password: f.pw.value, options: { emailRedirectTo: redirectTo } });
+      if (error) { f.querySelector('.error').textContent = /staff list|Database error/i.test(error.message) ? 'This email is not on the staff list yet. Ask your manager to add you first.' : error.message; return; }
+      closeSheet();
+      if (data.session) { const err = await cloudAfterSignIn(f.email.value.trim()); render(); toast(err || 'Account created — welcome!'); }
+      else toast('Nearly done! Check your email and tap the confirmation link.');
+    });
+  }
+
   // ---------- Render ----------
   const VIEWS = { home: viewHome, shifts: viewShifts, offered: viewOffered, shift: viewShift, occurrence: viewOccurrence, leave: viewLeave, forms: viewForms, docs: viewDocs, doc: viewDoc, messages: viewMessages, thread: viewThread, register: viewRegister, welfare: viewWelfare, support: viewSupport, profile: viewProfile, training: viewTraining, module: viewModule, mydocs: viewMyDocs, compliance: viewCompliance, companycompliance: viewCompanyCompliance, timesheet: viewTimesheet, admin: viewAdmin };
   function render() {
@@ -1260,6 +1529,7 @@
     ticker = setInterval(tick, 1000);
   }
   function tick() {
+    if (CLOUD && cloud.renderWanted && !$('#sheet-root').children.length && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) { cloud.renderWanted = false; render(); return; }
     const t = $('#live-time'); if (t) t.textContent = fmtTime(new Date());
     const e = openEntry(db.session); if (!e) return;
     for (const id of ['elapsed', 'drawer-elapsed']) { const el = document.getElementById(id); if (el) el.textContent = fmtClock(entryWorkedMs(e)); }
@@ -1269,6 +1539,14 @@
     $('#login-form').addEventListener('submit', async (ev) => {
       ev.preventDefault();
       const email = $('#email').value.trim().toLowerCase(); const pw = $('#password').value;
+      if (CLOUD) {
+        if (!cloud.sb) { $('#login-error').textContent = 'Could not reach the server. Check your connection.'; return; }
+        const btn = ev.target.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Signing in…';
+        const err = await cloudSignIn(email, pw);
+        if (err) { btn.disabled = false; btn.textContent = 'Sign In'; $('#login-error').textContent = err; return; }
+        ui.showPw = false; go(CONFIG.startPage, {}, false); toast(`Welcome, ${me().name.split(' ')[0]}`);
+        return;
+      }
       const u = db.staff.find((s) => s.email.toLowerCase() === email);
       if (!u || !u.active || await hashPassword(pw, u.salt) !== u.pwHash) { $('#login-error').textContent = 'Incorrect email address or password'; return; }
       db.session = u.id; save(); ui.showPw = false; go(CONFIG.startPage, {}, false); toast(`Welcome, ${u.name.split(' ')[0]}`);
@@ -1318,7 +1596,7 @@
       const a = Number(new FormData(qz).get('a'));
       if (a !== t.answer) { qz.querySelector('.error').textContent = 'Not quite — read the module again and retry.'; return; }
       db.trainingDone = db.trainingDone.filter((x) => !(x.moduleId === t.id && x.staffId === db.session));
-      db.trainingDone.push({ moduleId: t.id, staffId: db.session, date: new Date().toISOString() }); save(); render(); toast('Module completed ✓');
+      db.trainingDone.push({ id: uid(), moduleId: t.id, staffId: db.session, date: new Date().toISOString() }); save(); render(); toast('Module completed ✓');
     });
   }
 
@@ -1360,6 +1638,7 @@
       case 'replay-intro': db.onboarded = false; save(); render(); break;
       case 'toggle-pw': { const v = $('#password').value; const e = $('#email').value; ui.showPw = !ui.showPw; render(); $('#password').value = v; $('#email').value = e; break; }
       case 'forgot':
+        if (CLOUD) { if (cloud.sb) sheetForgotCloud(); else toast('You are offline'); break; }
         openSheet(`<h2>Forgot Password</h2><p class="muted" style="margin-top:0">Enter your work email. Your manager will be asked to reset your password.</p><form class="form">
           <div class="field"><label>Email Address</label><input class="input" type="email" name="email" value="${esc($('#email')?.value || '')}" required></div>
           <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Request Reset</button></form>`, (d) => {
@@ -1379,7 +1658,8 @@
       case 'open-drawer': ui.drawer = true; render(); break;
       case 'close-drawer': ui.drawer = false; render(); break;
       case 'back': back(); break;
-      case 'refresh': render(); toast('Updated'); break;
+      case 'refresh': if (CLOUD && cloud.sb) { try { await cloudPush(); await cloudPull(); } catch (e) { toast('Offline — showing saved copy'); break; } } render(); toast('Updated'); break;
+      case 'send-reset': { const st = staffById(id); if (!st || !cloud.sb) break; const { error } = await cloud.sb.auth.resetPasswordForEmail(st.email, { redirectTo: location.origin + location.pathname }); toast(error ? error.message : `Reset link sent to ${st.email}`); break; }
       case 'week-prev': ui.weekOffset--; render(); break;
       case 'week-next': ui.weekOffset++; render(); break;
       case 'clock-in': await clockIn({ shiftId: id || null }); break;
@@ -1409,7 +1689,7 @@
         break;
       case 'register-pick': ui.regSite = id; closeSheet(); render(); break;
       case 'doc-new': sheetDocNew(); break;
-      case 'doc-read': db.docReads.push({ docId: id, staffId: db.session, time: new Date().toISOString() }); save(); render(); toast('Thanks — recorded'); break;
+      case 'doc-read': db.docReads.push({ id: uid(), docId: id, staffId: db.session, time: new Date().toISOString() }); save(); render(); toast('Thanks — recorded'); break;
       case 'doc-delete': if (confirm('Delete this document?')) { db.documents = db.documents.filter((d) => d.id !== id); save(); back(); } break;
       case 'visitor-new':
         openSheet(`<h2>Sign In Visitor</h2><form class="form"><div class="field"><label>Full name</label><input class="input" name="name" required></div>
@@ -1434,7 +1714,7 @@
       case 'compliance-edit': sheetCompliance(id); break;
       case 'mydoc-delete': if (confirm('Delete this document?')) { db.staffDocs = db.staffDocs.filter((d) => d.id !== id); save(); render(); } break;
       case 'module-new': sheetModuleNew(); break;
-      case 'module-done': db.trainingDone.push({ moduleId: id, staffId: db.session, date: new Date().toISOString() }); save(); render(); toast('Marked as watched ✓'); break;
+      case 'module-done': db.trainingDone.push({ id: uid(), moduleId: id, staffId: db.session, date: new Date().toISOString() }); save(); render(); toast('Marked as watched ✓'); break;
       case 'module-delete': if (confirm('Delete this training module?')) { db.training = db.training.filter((t) => t.id !== id); save(); back(); } break;
       case 'support-reply': sheetSupportReply(id); break;
       case 'change-pw': sheetChangePw(); break;
@@ -1446,7 +1726,13 @@
         const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'application/json,.json';
         inp.onchange = async () => {
           try { const data = JSON.parse(await inp.files[0].text()); if (!Array.isArray(data.staff) || !Array.isArray(data.sites)) throw new Error('bad');
-            db = Object.assign(emptyDb(), data, { session: db.session, onboarded: true }); save(); render(); toast('Data restored');
+            const keep = me();
+            db = Object.assign(emptyDb(), data, { session: db.session, onboarded: true });
+            // Always keep the manager doing the restore, so they can't lock themselves out.
+            let mine = db.staff.find((x) => x.email.toLowerCase() === keep.email.toLowerCase());
+            if (!mine) { mine = keep; db.staff.push(keep); }
+            mine.isAdmin = true; mine.active = true; db.session = mine.id;
+            save(); render(); toast('Data restored');
           } catch (e) { toast('That is not a valid backup file'); }
         };
         inp.click(); break;
@@ -1475,14 +1761,14 @@
         alert(`Temporary password for ${s.name}:\n\n${temp}\n\nGive this to them and ask them to change it under My Profile.`);
         break;
       }
-      case 'logout': db.session = null; save(); ui.drawer = false; ui.stack = []; ui.route = CONFIG.startPage; render(); break;
+      case 'logout': if (CLOUD) { cloudSignOut(); break; } db.session = null; save(); ui.drawer = false; ui.stack = []; ui.route = CONFIG.startPage; render(); break;
     }
   });
 
   // ---------- Boot ----------
   (async function boot() {
     if (CONFIG.loginBackground) document.documentElement.style.setProperty('--bg-photo', `url('${CONFIG.loginBackground}')`);
-    await seed();
+    if (CLOUD) await cloudInit(); else await seed();
     render();
     if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
   })();
