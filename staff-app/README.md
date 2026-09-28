@@ -4,9 +4,13 @@ A mobile staff app for Van Wyngaardt Global: sign in, staff info, shifts and clo
 
 It is a Progressive Web App built with plain HTML, CSS and JavaScript. There is no build step. On a phone, open it and choose **Add to Home Screen** to install it like a normal app.
 
+The app runs in one of two modes:
+- **Demo mode** (the default). Everything is saved on the phone it's used on, with sample staff, sites and shifts to try.
+- **Shared mode**. Once you connect a free Supabase database (see [Going live](#going-live)), every phone and every manager sees the same shifts, clock-ins, messages and approvals, updated within seconds.
+
 ## Screens
 
-**Sign in.** The gold ring logo sits on a navy background. Staff sign in with their email address and password, and can show or hide the password. The screen also has **Forgot Password** (sends a reset request to managers) and **Log In with Domain** (checks the company domain). Four intro slides show on first launch.
+**Sign in.** The gold ring logo sits on a navy background. Staff sign in with their email address and password, and can show or hide the password. The screen also has **Forgot Password** (in shared mode: emails a reset link, or lets new staff create their password) and **Log In with Domain** (checks the company domain). Four intro slides show on first launch.
 
 **Side menu** (opened with the ☰ button):
 - A profile photo with a camera button to change it.
@@ -15,7 +19,7 @@ It is a Progressive Web App built with plain HTML, CSS and JavaScript. There is 
 
 | Menu item | What it does |
 | --- | --- |
-| Dashboard | Live clock, shift timer, breaks, quick tiles, and today's and upcoming shifts. After signing in, the app opens on **My Shifts**; change `startPage` in `CONFIG` to open somewhere else. |
+| Dashboard | Live clock, shift timer, breaks, quick tiles, and today's and upcoming shifts. After signing in, the app opens on **My Shifts**; change `startPage` in `config.js` to open somewhere else. |
 | Occurrence Log | Timestamped site log. Clock-ins, checkpoints, visitors and forms are added to it automatically. |
 | My Shifts | Week picker (`Sep 28 - Oct 04`) and shift cards. Tapping one opens **My Roster Detail**: notes, **Open in Maps**, **View Contacts**, clock in, and offer the shift for cover. |
 | Offered Shifts | Open shifts for each week. **Accept Shift** sends the shift to a manager to confirm. |
@@ -39,7 +43,7 @@ The app saves your GPS location when you clock in and when you do a welfare chec
 
 ## Demo logins
 
-The password for all demo accounts is `Password1`.
+These work in demo mode only. The password for all demo accounts is `Password1`.
 
 | Email | Access |
 | --- | --- |
@@ -49,17 +53,60 @@ The password for all demo accounts is `Password1`.
 
 ## Settings
 
-The `CONFIG` block at the top of `app.js` holds:
-- company name
-- domain
-- currency
+All settings live in **`config.js`**, so you never need to edit `app.js`:
+- company name, domain, region and currency
 - support phone numbers (daytime and out of hours) and email
 - emergency number
 - welfare check interval
 - `startPage`: the first screen after signing in
 - `loginBackground`: an optional team photo shown behind the sign-in screen and menu header. Put the image file (for example `login-bg.jpg`) in `staff-app/` and set its name here. It's tinted navy automatically.
+- `supabaseUrl` and `supabaseAnonKey`: the shared database (see below)
 
 Brand colours are CSS variables at the top of `styles.css`: navy `#16263f` and gold `#b09244`.
+
+## Going live
+
+### 1. Put the app online (GitHub Pages)
+
+The workflow `.github/workflows/deploy-staff-app.yml` publishes the `staff-app/` folder every time `main` changes.
+
+1. In GitHub, open the repository's **Settings → Pages**.
+2. Under **Build and deployment → Source**, choose **GitHub Actions**. You only do this once.
+3. Merge to `main`, or run the workflow by hand from the **Actions** tab.
+4. The app will be at **https://007greyman.github.io/vanwyngaardtglobal-site/**. Open it on your phone and use **Add to Home Screen**.
+
+Any other static host with HTTPS also works: Netlify, Vercel, cPanel and so on. The camera, NFC, GPS, installing as an app and offline mode all need HTTPS.
+
+### 2. Connect the shared database (Supabase, free plan)
+
+1. Create a free account at [supabase.com](https://supabase.com) and a **New project**. Choose the London region for UK staff.
+2. Open **SQL Editor → New query**, paste in all of [`supabase/schema.sql`](supabase/schema.sql), and click **Run**.
+3. Open **Authentication → URL Configuration**. Set **Site URL** to your app address (for example `https://007greyman.github.io/vanwyngaardtglobal-site/`) and add the same address under **Redirect URLs**. Password-reset and confirmation emails link back to this address.
+4. Keep **Authentication → Providers → Email → Confirm email** switched **on**. The database only trusts confirmed email addresses.
+5. Open **Project Settings → API**. Copy the **Project URL** and the **anon public** key into `config.js` as `supabaseUrl` and `supabaseAnonKey`. The anon key is designed to be public; the access rules in the database protect the data.
+6. Publish the change (step 1). Then **sign in first yourself**: the first person to sign in to an empty database becomes the manager.
+   - To sign in the first time, tap **Forgot Password → New staff**, enter your email and choose a password.
+   - Confirm your email.
+   - Sign in.
+
+**Adding staff.**
+1. The manager adds them under **Admin Dashboard → Staff**, using their work email.
+2. The staff member opens the app, taps **Forgot Password → New staff**, and creates their own password.
+
+Only emails on the staff list can create an account.
+
+**What the database enforces**, so even a modified app can't get round it:
+- Staff can't see other people's support chats or personal documents.
+- Staff can't edit sites, rotas, documents or other staff.
+- Staff can't make themselves a manager or change their pay rate.
+- Staff can't approve their own leave or incidents.
+- Staff can only accept open shifts or release their own.
+- Staff can't change a clock-in once it's finished, or backdate one.
+- Deactivated staff lose access immediately.
+
+**Offline.** Clock-ins, forms and messages made with no signal are kept on the phone and sent automatically when the connection returns. Signing out removes the company's data from the phone.
+
+**Moving from demo mode.** Demo data stays on the phone and isn't uploaded. Admins can use **Reports → Backup** in demo mode and **Restore** in shared mode to bring it across.
 
 ## Run locally
 
@@ -68,13 +115,3 @@ cd staff-app
 python3 -m http.server 8080
 # open http://localhost:8080
 ```
-
-## Deploy
-
-Upload the `staff-app/` folder to any static host: GitHub Pages, Netlify, Vercel, cPanel or similar. Serve it over **HTTPS**, which the camera, NFC, GPS, installing as an app and offline mode all need.
-
-## Important: data storage
-
-This version saves all data **on the device** in the browser's localStorage. That works for a demo, or for one shared device such as a gatehouse tablet. It does **not** sync between staff phones.
-
-For live use across many phones, connect a backend such as Supabase, Firebase or your own API. In `app.js`, all reads and writes go through the `db` object and `save()`, so that is the one place to change. Until then, admins can use **Reports → Backup / Restore** to move data between devices.

@@ -1,6 +1,7 @@
-// Offline cache for the app shell.
-const CACHE = 'vwg-staff-v4';
-const ASSETS = ['./', './index.html', './styles.css', './app.js', './icon.svg', './manifest.webmanifest'];
+// Offline cache for the app shell. Only the app's own files and the Supabase
+// library are cached; database requests always go to the network.
+const CACHE = 'vwg-staff-v5';
+const ASSETS = ['./', './index.html', './styles.css', './config.js', './app.js', './icon.svg', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
@@ -16,11 +17,16 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  const url = new URL(e.request.url);
+  const cacheable = url.origin === self.location.origin || url.hostname === 'cdn.jsdelivr.net';
+  if (!cacheable) return;
   e.respondWith(
     fetch(e.request)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy));
+        }
         return res;
       })
       .catch(() => caches.match(e.request))

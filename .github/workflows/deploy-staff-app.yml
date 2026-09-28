@@ -1,0 +1,35 @@
+# Publishes the staff app (the staff-app/ folder) to GitHub Pages whenever main changes.
+# One-time setup: repository Settings > Pages > Build and deployment > Source: "GitHub Actions".
+name: Deploy staff app
+
+on:
+  push:
+    branches: [main]
+    paths: ['staff-app/**', '.github/workflows/deploy-staff-app.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the app's JavaScript parses
+        run: node --check staff-app/app.js && node --check staff-app/config.js && node --check staff-app/sw.js
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: staff-app
+      - id: deployment
+        uses: actions/deploy-pages@v4
