@@ -134,6 +134,12 @@
   function migrate(d, saved = {}) {
     d.staff.forEach((s) => { if (s.licence === undefined) s.licence = ''; if (s.leaveAllowance === undefined) s.leaveAllowance = 28; if (!s.pin) s.pin = randomPin(); if (!s.compliance) s.compliance = {}; });
     if (!saved.training) d.training = defaultTraining();
+    else if ((saved.trainingVersion || 1) < 2) {
+      // Replace the built-in modules with the current set; keep any a manager added.
+      d.training = [...defaultTraining(), ...d.training.filter((t) => !/^v\d$/.test(t.id))];
+      d.trainingDone = d.trainingDone.filter((x) => !/^v\d$/.test(x.moduleId));
+    }
+    d.trainingVersion = 2;
     d.documents.forEach((x) => { if (!x.scope) { x.scope = 'company'; x.refId = null; x.requireSign = true; } });
     d.messages.forEach((m) => { if (!m.thread) m.thread = 'all'; });
     return d;
@@ -186,7 +192,7 @@
     db.shifts.push({ id: uid(), staffId: db.staff[0].id, siteId: db.sites[0].id, date: ymd(new Date()), start: '07:00', end: '19:00', notes: '', status: 'confirmed' });
     [2, 4, 9].forEach((d, k) => db.shifts.push({ id: uid(), staffId: null, siteId: db.sites[k % db.sites.length].id, date: ymd(addDays(monday, d)), start: k === 1 ? '19:00' : '07:00', end: k === 1 ? '07:00' : '19:00', notes: 'Cover needed', status: 'offered' }));
     const now = new Date().toISOString();
-    db.training = defaultTraining();
+    db.training = defaultTraining(); db.trainingVersion = 2;
     const [ng, hr, ct] = db.sites;
     db.documents = [
       { id: uid(), title: 'Code of Conduct', scope: 'company', refId: null, requireSign: true, date: now, body: 'All staff must act with honesty, integrity and professionalism.\n\n1. Treat customers, visitors and colleagues with respect.\n2. Follow all lawful instructions from supervisors.\n3. Never consume alcohol or drugs before or during a shift.\n4. Keep all site information confidential.' },
@@ -515,7 +521,7 @@
       return;
     }
     openSheet(`<h2>Request Leave</h2><form class="form">
-      <div class="field"><label>Leave type</label><select class="input" name="type"><option>Annual Leave</option><option>Sick Leave</option><option>Compassionate Leave</option><option>Unpaid Leave</option><option>Training</option></select></div>
+      <div class="field"><label>Leave type</label><select class="input" name="type"><option>Annual Leave</option><option>Sick Leave</option><option>Compassionate Leave</option><option>Unpaid Leave</option><option>Training</option><option>Unavailability</option></select></div>
       <div class="row"><div class="field"><label>From</label><input class="input" type="date" name="from" value="${date}" required></div>
       <div class="field"><label>To</label><input class="input" type="date" name="to" value="${date}" required></div></div>
       <div class="field"><label>Reason</label><textarea class="input" name="reason" placeholder="Optional"></textarea></div>
@@ -756,8 +762,7 @@
     const tel = (n) => `<a class="tel" href="tel:${n.replace(/\s/g, '')}">${esc(n)}</a>`;
     return `Hi there! 👋 Welcome to ${esc(CONFIG.shortName)} Support. I’m here to help with any questions or issues you may have—just let me know what you need help with.<br><br>
       Prefer to speak to someone? Our telephone support team is also available:<br><br>
-      📞 Weekdays, 9am–5pm: ${tel(CONFIG.supportPhone)}<br>📞 Evenings &amp; weekends: ${tel(CONFIG.supportPhoneOoh)}<br><br>
-      📧 ${`<a class="tel" href="mailto:${CONFIG.supportEmail}">${esc(CONFIG.supportEmail)}</a>`}`;
+      📞 Weekdays, 9am–5pm: ${tel(CONFIG.supportPhone)}<br>📞 Evenings &amp; weekends: ${tel(CONFIG.supportPhoneOoh)}`;
   }
   function viewSupport() {
     const u = me(); const team = supportTeam();
@@ -815,10 +820,10 @@
       ${row('Mobile', 'phone', u.phone, 'type="tel" autocomplete="tel"')}
       ${row('Pin', 'pin', u.pin || '', 'inputmode="numeric" pattern="\\d{4}" maxlength="4"')}
       ${link('mydocs', 'My Documents')}${link('compliance', 'My Compliance')}${link('companycompliance', 'Company Compliance')}
-      <button type="button" class="pf-row" data-action="change-pw"><b>Change Password</b><span class="chev">${ic(I.right, 22, 1.6)}</span></button>
       <div class="error" id="profile-error" style="padding:6px 12px 0"></div>
       <button class="btn btn-gold btn-block pf-save" type="submit">Save Changes</button>
       <button type="button" class="btn btn-block pf-logout" data-action="logout">Logout</button>
+      <div style="border-top:1px solid #d4d7dc;margin:12px 10px 0;padding-top:14px;text-align:center"><button type="button" class="small muted" style="text-decoration:underline" data-action="change-pw">Change password</button></div>
     </form></div>`;
   }
 
@@ -883,11 +888,10 @@
     <path d="M6 18h52M6 46h52" stroke="#fff" stroke-width="3.5"/><path d="M13 13h6M24 13h6M35 13h6M46 13h6M13 51h6M24 51h6M35 51h6M46 51h6" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M26 24v16l13-8z" fill="none" stroke="#fff" stroke-width="3.5" stroke-linejoin="round"/></svg>`;
   function defaultTraining() {
     return [
-      { id: 'v1', title: 'Clocking into Shifts', desc: 'A short video on how to clock into your shift', video: '', body: 'Open the menu and tap CLOCK IN, or open today\'s shift under My Shifts and tap "Clock In to this Shift". At sites with a QR code or NFC tag, tap QR / NFC and scan it to clock in at that site. Your location is saved when you clock in, if you allow it.', q: 'How do you clock in at a site that has a QR code?', options: ['Email your manager', 'Tap QR / NFC and scan the code', 'Wait for the shift to start'], answer: 1 },
-      { id: 'v2', title: 'Clocking Out', desc: 'This video will show you how to clock out at the end of your shift', video: '', body: 'Open the menu and tap CLOCK OUT. Any break you are still on ends automatically. Check My Timesheet to see the hours recorded.', q: 'Where can you check the hours you have worked?', options: ['My Timesheet', 'Team Message', 'Document Library'], answer: 0 },
-      { id: 'v3', title: 'Submitting Leave', desc: 'A short video on how to submit for time off', video: '', body: 'Open Submit Leave and tap the first day you need off, then choose the dates and leave type. A hollow blue circle means waiting for approval; a filled circle means approved.', q: 'What does a filled blue circle on the leave calendar mean?', options: ['Leave approved', 'Leave declined', 'Bank holiday'], answer: 0 },
-      { id: 'v4', title: 'My Shifts page', desc: `A short video on how to use the My Shifts page of the ${CONFIG.shortName} app`, video: '', body: 'Use the arrows to move between weeks. Tap a shift to see notes, open the site in Maps and view site contacts. You can also offer a shift for cover.', q: 'How do you see site contacts for a shift?', options: ['Tap the shift, then View Contacts', 'Look in Training', 'You cannot'], answer: 0 },
-      { id: 'v5', title: 'Lone Working & Welfare Checks', desc: 'Keeping yourself safe when working alone', video: '', body: `When working alone you must complete a Welfare Check at least every ${CONFIG.welfareMinutes} minutes. If you are in danger, press "I need help" and call ${CONFIG.emergencyPhone}.`, q: 'How often must you complete a welfare check when alone?', options: ['Once a shift', `Every ${CONFIG.welfareMinutes} minutes`, 'Never'], answer: 1 },
+      { id: 'v1', title: 'Clock Out with Customer Approval', desc: 'This video will show you how to clock out using the customer approval feature', video: '', body: 'At the end of your shift tap CLOCK OUT. If the site needs sign-off, ask the customer\'s representative to type their name and sign in the box, then tap Clock Out. Their approval is saved with your hours and shown on your timesheet.', q: 'Who signs the customer approval box?', options: ['You', 'The customer\'s representative on site', 'Your manager at head office'], answer: 1 },
+      { id: 'v2', title: 'Submitting Leave & Unavailability', desc: 'A short video on how to submit for time off', video: '', body: 'Open Submit Leave and tap the first day you need off. Choose the leave type (or Unavailability if you just can\'t work that day) and the dates. A hollow blue circle means waiting for approval; a filled circle means approved.', q: 'What does a filled blue circle on the leave calendar mean?', options: ['Approved', 'Declined', 'Bank holiday'], answer: 0 },
+      { id: 'v3', title: 'Clocking into Shifts', desc: 'A short video on how to clock into your shift', video: '', body: 'Open the menu and tap CLOCK IN, or open today\'s shift under My Shifts and tap "Clock In to this Shift". At sites with a QR code or NFC tag, tap QR / NFC and scan it to clock in at that site. Your location is saved when you clock in, if you allow it.', q: 'How do you clock in at a site that has a QR code?', options: ['Email your manager', 'Tap QR / NFC and scan the code', 'Wait for the shift to start'], answer: 1 },
+      { id: 'v4', title: 'My Roster page', desc: `A short video on how to use the My Roster page of the ${CONFIG.shortName} app`, video: '', body: 'Open My Shifts and use the arrows to move between weeks. Tap a shift to open My Roster Detail: notes, Open in Maps and View Contacts. You can also offer a shift for cover.', q: 'How do you see site contacts for a shift?', options: ['Tap the shift, then View Contacts', 'Look in Training', 'You cannot'], answer: 0 },
     ];
   }
   function viewTraining() {
@@ -949,7 +953,7 @@
   function entryRow(e, who = false) {
     const cin = new Date(e.clockIn); const site = siteById(e.siteId); const s = who ? staffById(e.staffId) : null;
     return `<div class="item"><div class="item-main"><div class="item-title">${s ? esc(s.name) + ' · ' : ''}${DAYS[cin.getDay()].slice(0, 3)} ${dmy(cin)}</div>
-      <div class="item-sub">${fmtTime(cin)} - ${e.clockOut ? fmtTime(new Date(e.clockOut)) : 'now'}${site ? ' · ' + esc(site.name) : ''}${e.breaks.length ? ' · breaks ' + fmtDur(entryBreakMs(e)) : ''}${e.method !== 'app' ? ' · ' + e.method.toUpperCase() : ''}${e.geo ? ' · 📍' : ''}</div></div>
+      <div class="item-sub">${fmtTime(cin)} - ${e.clockOut ? fmtTime(new Date(e.clockOut)) : 'now'}${site ? ' · ' + esc(site.name) : ''}${e.breaks.length ? ' · breaks ' + fmtDur(entryBreakMs(e)) : ''}${e.method !== 'app' ? ' · ' + e.method.toUpperCase() : ''}${e.geo ? ' · 📍' : ''}</div>${e.approval ? `<button class="small" style="color:var(--green);font-weight:600" data-action="view-approval" data-id="${e.id}">✓ Customer approved · ${esc(e.approval.name)}</button>` : ''}</div>
       <div class="item-end">${e.clockOut ? fmtDur(entryWorkedMs(e)) : statusPill('on site')}</div></div>`;
   }
 
@@ -1160,13 +1164,52 @@
     save(); ui.drawer = false; render(); toast(`Clocked in at ${fmtTime(new Date())}`);
     const geo = await getGeo(); if (geo) { entry.geo = geo; save(); }
   }
-  function clockOut() {
+  function clockOut(approval = null) {
     const e = openEntry(db.session); if (!e) return;
     const now = new Date().toISOString();
     e.breaks.forEach((b) => { if (!b.end) b.end = now; });
     e.clockOut = now;
-    addOccurrence(`Clocked out · ${fmtDur(entryWorkedMs(e))} worked`, 'clock', e.siteId);
+    if (approval) e.approval = { ...approval, time: now };
+    addOccurrence(`Clocked out · ${fmtDur(entryWorkedMs(e))} worked${approval ? ` · approved by ${approval.name}` : ''}`, 'clock', e.siteId);
     save(); ui.drawer = false; render(); toast(`Clocked out · ${fmtDur(entryWorkedMs(e))} worked`);
+  }
+  function sheetClockOut() {
+    const e = openEntry(db.session); if (!e) return;
+    const site = siteById(e.siteId);
+    let signed = false;
+    const root = openSheet(`<h2>Clock Out</h2>
+      <p style="margin-top:0">Worked <b>${fmtDur(entryWorkedMs(e))}</b> since ${fmtTime(new Date(e.clockIn))}${site ? ` at ${esc(site.name)}` : ''}.</p>
+      <form class="form">
+        <h3 style="margin:4px 0 0">Customer Approval <span class="small muted" style="font-weight:400">(optional)</span></h3>
+        <div class="field"><label>Customer name</label><input class="input" name="name" autocomplete="off" placeholder="Name of person approving"></div>
+        <div class="field"><label>Signature</label><canvas class="sig" id="sig" aria-label="Signature pad"></canvas>
+          <button type="button" class="small muted" id="sig-clear" style="align-self:flex-end;text-decoration:underline">Clear signature</button></div>
+        <div class="error"></div>
+        <button class="btn btn-red btn-block" type="submit">Clock Out</button>
+        <button class="btn btn-ghost btn-block" type="button" data-dismiss>Cancel</button>
+      </form>`, (d) => {
+      const name = d.name.trim();
+      if (signed && !name) return 'Enter the customer\'s name, or clear the signature';
+      if (name && !signed) return 'Ask the customer to sign, or clear their name';
+      clockOut(name ? { name, signature: canvas.toDataURL('image/png') } : null);
+    });
+    const canvas = root.querySelector('#sig'); const ctx = canvas.getContext('2d');
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = canvas.clientWidth * ratio; canvas.height = canvas.clientHeight * ratio;
+    ctx.scale(ratio, ratio); ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111827';
+    let drawing = false;
+    const pos = (ev) => { const r = canvas.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; };
+    canvas.addEventListener('pointerdown', (ev) => { drawing = true; canvas.setPointerCapture(ev.pointerId); ctx.beginPath(); ctx.moveTo(...pos(ev)); });
+    canvas.addEventListener('pointermove', (ev) => { if (!drawing) return; ctx.lineTo(...pos(ev)); ctx.stroke(); signed = true; });
+    const end = () => { drawing = false; };
+    canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end);
+    root.querySelector('#sig-clear').addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); signed = false; });
+  }
+  function sheetApproval(id) {
+    const e = db.entries.find((x) => x.id === id); if (!e?.approval) return;
+    openSheet(`<h2>Customer Approval</h2><p style="margin-top:0">Approved by <b>${esc(e.approval.name)}</b> on ${fmtStamp(e.approval.time)}</p>
+      <img src="${e.approval.signature}" alt="Signature of ${esc(e.approval.name)}" style="width:100%;border:1px solid var(--line);border-radius:8px;background:#fff">
+      <button class="btn btn-ghost btn-block" data-dismiss style="margin-top:14px">Close</button>`);
   }
 
   // ---------- Files ----------
@@ -1176,10 +1219,10 @@
   }
   const toCsv = (rows) => rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
   function timesheetCsv(entries) {
-    const rows = [['Employee no', 'Name', 'Date', 'Site', 'Clock in', 'Clock out', 'Break (min)', 'Worked (h)', 'Method', 'Latitude', 'Longitude']];
+    const rows = [['Employee no', 'Name', 'Date', 'Site', 'Clock in', 'Clock out', 'Break (min)', 'Worked (h)', 'Method', 'Customer approval', 'Latitude', 'Longitude']];
     entries.slice().sort((a, b) => a.clockIn.localeCompare(b.clockIn)).forEach((e) => {
       const s = staffById(e.staffId) || {}; const cin = new Date(e.clockIn);
-      rows.push([s.empNo, s.name, dmy(cin), siteById(e.siteId)?.name, fmtTime(cin), e.clockOut ? fmtTime(new Date(e.clockOut)) : '', Math.round(entryBreakMs(e) / 60000), hours(entryWorkedMs(e)).toFixed(2), e.method, e.geo?.lat, e.geo?.lng]);
+      rows.push([s.empNo, s.name, dmy(cin), siteById(e.siteId)?.name, fmtTime(cin), e.clockOut ? fmtTime(new Date(e.clockOut)) : '', Math.round(entryBreakMs(e) / 60000), hours(entryWorkedMs(e)).toFixed(2), e.method, e.approval ? `${e.approval.name} (${fmtStamp(e.approval.time)})` : '', e.geo?.lat, e.geo?.lng]);
     });
     return toCsv(rows);
   }
@@ -1340,7 +1383,8 @@
       case 'week-prev': ui.weekOffset--; render(); break;
       case 'week-next': ui.weekOffset++; render(); break;
       case 'clock-in': await clockIn({ shiftId: id || null }); break;
-      case 'clock-out': if (confirm('Clock out now?')) clockOut(); break;
+      case 'clock-out': ui.drawer = false; render(); sheetClockOut(); break;
+      case 'view-approval': sheetApproval(id); break;
       case 'break-start': { const e = openEntry(db.session); if (e && !onBreak(e)) { e.breaks.push({ start: new Date().toISOString(), end: null }); save(); render(); toast('Break started'); } break; }
       case 'break-end': { const b = openEntry(db.session)?.breaks.find((x) => !x.end); if (b) { b.end = new Date().toISOString(); save(); render(); toast('Break ended'); } break; }
       case 'scan': ui.drawer = false; render(); sheetScan(); break;

@@ -19,7 +19,7 @@ It is a Progressive Web App built with plain HTML, CSS and JavaScript. There is 
 | Occurrence Log | Timestamped site log. Clock-ins, checkpoints, visitors and forms are added to it automatically. |
 | My Shifts | Week picker (`Sep 28 - Oct 04`) and shift cards. Tapping one opens **My Roster Detail**: notes, **Open in Maps**, **View Contacts**, clock in, and offer the shift for cover. |
 | Offered Shifts | Open shifts for each week. **Accept Shift** sends the shift to a manager to confirm. |
-| Submit Leave | Month calendar (Previous / Next). Tap a day to request leave. Pending leave shows as a hollow blue circle and approved leave as a filled circle. Shows the fixed leave balance (allowance minus approved annual leave). |
+| Submit Leave | Month calendar (Previous / Next). Tap a day to request leave, or to mark yourself Unavailable. Pending leave shows as a hollow blue circle and approved leave as a filled circle. Shows the fixed leave balance (allowance minus approved annual leave). |
 | Incident / Forms | Search by location, site, ID or form name. **Add** opens a list of forms: Incident Report, Near Miss, Patrol Report, Vehicle Check, Lost Property, Maintenance Issue. Each submission gets an ID such as `F00001`. |
 | Document Library | Tabs: **Shift Docs** (documents for the sites and customers of your upcoming shifts), **Company**, **Customer**, **Site**. Keyword search. Status shows View Only, Signature Required or Signed. Admins use **Add**. |
 | Team Message | Search, plus conversations: All Staff, one group per site, and direct messages. |
@@ -27,9 +27,11 @@ It is a Progressive Web App built with plain HTML, CSS and JavaScript. There is 
 | Welfare Check | **I'M OK** check-in, due every 60 minutes while on shift, and **I NEED HELP**, which alerts managers and calls 999. |
 | VWG Support | Chat-style help desk. It opens with a welcome message giving the daytime and out-of-hours phone numbers. Common questions (password, clocking, QR, leave, shifts, pay) get an instant answer. Staff can attach photos. Managers reply from **Admin → Requests → Support chats**. |
 | My Profile | Photo with camera button. Editable First Name, Last Name, Email, Mobile and Pin, with **Save Changes** and **Logout**. **My Documents**: upload ID, licence card or certificates (images, or PDFs under 1 MB). **My Compliance**: SIA licence, Right to Work, BS7858 vetting, DBS and First Aid, each shown as Valid, Expiring Soon, Expired or Missing. **Company Compliance**: policies still to sign and training still to finish. |
-| Training Module | Video list, each with a film icon, title and description. Opening one plays the video (YouTube, Vimeo or .mp4 link) and shows a written guide and a quick quiz. Admins can add or delete videos. |
+| Training Module | Video list, each with a film icon, title and description. Built-in modules: Clock Out with Customer Approval, Submitting Leave & Unavailability, Clocking into Shifts, My Roster page. Opening one plays the video (YouTube, Vimeo or .mp4 link) and shows a written guide and a quick quiz. Admins can add or delete videos. |
 | My Timesheet | Hours for this week, last week or this month, estimated pay, and CSV export. |
 | Admin Dashboard (admins only) | Live (who's on shift, who's missing, welfare alerts), Staff, Sites (address, contacts, QR/NFC code), Roster, Requests (confirm shifts, leave, incidents, password resets), Reports (hours, wage cost, CSV exports, backup and restore). |
+
+**Clock out with customer approval.** CLOCK OUT opens a screen where the customer's representative can type their name and sign with a finger. This is optional. The approval and signature are saved with the hours, shown on the timesheet (tap to view the signature) and included in the CSV export.
 
 **QR / NFC.** Scan a site's QR code with the camera, tap an NFC tag, or type the site code. If you are not clocked in, this clocks you in at that site. If you are already on shift, it logs a patrol checkpoint. Camera scanning works on Chrome/Android and uses `BarcodeDetector`. NFC works on Chrome/Android. Typing the code works everywhere. To make a QR code for a site, put its site code (for example `VWG-NG01`) into any QR code generator and print it.
 
