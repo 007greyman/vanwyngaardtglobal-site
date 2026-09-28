@@ -33,7 +33,7 @@ body {
 }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; border: 0; background: none; padding: 0; }
-a { color: inherit; }
+a { color: inherit; text-decoration: none; }
 
 .app {
   max-width: 480px; margin: 0 auto; min-height: 100%;
