@@ -1,5 +1,5 @@
 // Offline cache for the app shell.
-const CACHE = 'vwg-staff-v2';
+const CACHE = 'vwg-staff-v3';
 const ASSETS = ['./', './index.html', './styles.css', './app.js', './icon.svg', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {

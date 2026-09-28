@@ -11,6 +11,7 @@
     version: 'v1.1.0(2)',
     currency: '£',
     supportPhone: '+44 0000 000000',
+    supportPhoneOoh: '+44 0000 000001',
     supportEmail: 'support@vanwyngaardtglobal.com',
     emergencyPhone: '999',
     welfareMinutes: 60,
@@ -108,13 +109,6 @@
 
   // ---------- Static content ----------
   const FORM_TYPES = ['Incident Report', 'Near Miss', 'Patrol Report', 'Vehicle Check', 'Lost Property', 'Maintenance Issue'];
-  const TRAINING = [
-    { id: 't1', title: 'Company Induction', mins: 10, body: `Welcome to ${CONFIG.company}.\n\n• Always arrive 10 minutes before your shift.\n• Clock in using the app or by scanning the site QR code.\n• Wear full uniform and your ID badge at all times.\n• Report every incident, however small, using Incident / Forms.`, q: 'When should you arrive for your shift?', options: ['On the minute', '10 minutes early', '30 minutes late'], answer: 1 },
-    { id: 't2', title: 'Health & Safety Basics', mins: 15, body: 'Identify hazards, assess the risk, and report them.\n\n• Know where fire exits and assembly points are on every site.\n• Never block fire doors.\n• Use the Near Miss form for anything that could have caused harm.', q: 'Which form do you use for something that nearly caused harm?', options: ['Near Miss', 'Vehicle Check', 'Lost Property'], answer: 0 },
-    { id: 't3', title: 'Lone Worker & Welfare Checks', mins: 8, body: `When working alone you must complete a Welfare Check at least every ${CONFIG.welfareMinutes} minutes.\n\nIf you are in danger, press "I need help" and call ${CONFIG.emergencyPhone}.`, q: 'How often must you complete a welfare check when alone?', options: ['Once a shift', `Every ${CONFIG.welfareMinutes} minutes`, 'Never'], answer: 1 },
-    { id: 't4', title: 'Visitor Sign-On Procedure', mins: 6, body: 'Every visitor must be signed in on the Electronic Sign On Register with their name, company and purpose of visit, and signed out when they leave.', q: 'Where do you record visitors?', options: ['Occurrence Log', 'Electronic Sign On Register', 'Team Message'], answer: 1 },
-    { id: 't5', title: 'Data Protection (GDPR)', mins: 12, body: 'Only collect the personal information you need. Never share visitor or staff details outside the company. Report any data breach to your manager immediately.', q: 'Who do you report a data breach to?', options: ['Nobody', 'Your manager', 'Social media'], answer: 1 },
-  ];
   const SLIDES = [
     { icon: I.clock, title: 'Clock in & out', text: 'Start and finish your shift with one tap, or scan the site QR / NFC tag.' },
     { icon: I.cal, title: 'My Shifts', text: 'See your roster week by week, with site address, maps and contacts.' },
@@ -125,21 +119,23 @@
   // ---------- Data ----------
   const emptyDb = () => ({
     version: 2, staff: [], sites: [], shifts: [], entries: [], leave: [], incidents: [], occurrences: [],
-    documents: [], docReads: [], messages: [], register: [], welfare: [], trainingDone: [], resetRequests: [],
+    documents: [], docReads: [], messages: [], register: [], welfare: [], trainingDone: [], resetRequests: [], training: [], support: [], staffDocs: [],
     session: null, onboarded: false,
   });
   let db = load();
   function load() {
-    try { const raw = localStorage.getItem(STORE_KEY); if (raw) return migrate(Object.assign(emptyDb(), JSON.parse(raw))); } catch (e) { /* fresh */ }
+    try { const raw = localStorage.getItem(STORE_KEY); if (raw) { const saved = JSON.parse(raw); return migrate(Object.assign(emptyDb(), saved), saved); } } catch (e) { /* fresh */ }
     return emptyDb();
   }
   // Fill in fields added after data was first saved on a device.
-  function migrate(d) {
-    d.staff.forEach((s) => { if (s.licence === undefined) s.licence = ''; if (s.leaveAllowance === undefined) s.leaveAllowance = 28; });
+  function migrate(d, saved = {}) {
+    d.staff.forEach((s) => { if (s.licence === undefined) s.licence = ''; if (s.leaveAllowance === undefined) s.leaveAllowance = 28; if (!s.pin) s.pin = randomPin(); if (!s.compliance) s.compliance = {}; });
+    if (!saved.training) d.training = defaultTraining();
     d.documents.forEach((x) => { if (!x.scope) { x.scope = 'company'; x.refId = null; x.requireSign = true; } });
     d.messages.forEach((m) => { if (!m.thread) m.thread = 'all'; });
     return d;
   }
+  const randomPin = () => String(1000 + Math.floor(Math.random() * 9000));
   function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch (e) { toast('Could not save on this device'); } }
 
   async function seed() {
@@ -159,7 +155,8 @@
         email: name.split(' ')[0].toLowerCase() + '@' + CONFIG.domain,
         phone: '07700 900' + pad(100 + i).slice(-3), startDate: ymd(addDays(new Date(), -200 * (i + 1))),
         color: COLORS[i % COLORS.length], salt, pwHash: await hashPassword('Password1', salt),
-        photo: null, emergency: '', address: '', leaveAllowance: 28,
+        photo: null, emergency: '', address: '', leaveAllowance: 28, pin: randomPin(),
+        compliance: isAdmin ? {} : { sia: { ref: '', date: ymd(addDays(new Date(), i === 4 ? 40 : 500)) }, rtw: { ref: '', date: ymd(addDays(new Date(), 900)) }, vetting: { ref: 'BS-' + (2200 + i), date: ymd(addDays(new Date(), -300)) } },
         licence: isAdmin ? '' : '1017' + String(4000000000 + i * 1234567).slice(0, 12),
       });
     }
@@ -186,6 +183,7 @@
     db.shifts.push({ id: uid(), staffId: db.staff[0].id, siteId: db.sites[0].id, date: ymd(new Date()), start: '07:00', end: '19:00', notes: '', status: 'confirmed' });
     [2, 4, 9].forEach((d, k) => db.shifts.push({ id: uid(), staffId: null, siteId: db.sites[k % db.sites.length].id, date: ymd(addDays(monday, d)), start: k === 1 ? '19:00' : '07:00', end: k === 1 ? '07:00' : '19:00', notes: 'Cover needed', status: 'offered' }));
     const now = new Date().toISOString();
+    db.training = defaultTraining();
     const [ng, hr, ct] = db.sites;
     db.documents = [
       { id: uid(), title: 'Code of Conduct', scope: 'company', refId: null, requireSign: true, date: now, body: 'All staff must act with honesty, integrity and professionalism.\n\n1. Treat customers, visitors and colleagues with respect.\n2. Follow all lawful instructions from supervisors.\n3. Never consume alcohol or drugs before or during a shift.\n4. Keep all site information confidential.' },
@@ -228,7 +226,7 @@
   }
 
   // ---------- UI state ----------
-  const ui = { route: 'home', params: {}, stack: [], drawer: false, slide: 0, weekOffset: 0, tsRange: 'week', adminTab: 'live', showPw: false, leaveMonth: 0, formQ: '', docTab: 'company', docQ: '', msgQ: '', regDay: null, regSite: null };
+  const ui = { route: 'home', params: {}, stack: [], drawer: false, slide: 0, weekOffset: 0, tsRange: 'week', adminTab: 'live', showPw: false, supportTyping: false, leaveMonth: 0, formQ: '', docTab: 'company', docQ: '', msgQ: '', regDay: null, regSite: null };
   let ticker = null;
   let scanStop = null;
 
@@ -741,66 +739,194 @@
     </div></div>`;
   }
 
-  // ---------- Support ----------
+  // ---------- Support chat ----------
+  const SUPPORT_FAQ = [
+    [/password|log ?in|sign ?in/i, 'To reset your password, tap "Forgot Password" on the sign-in screen. A manager will give you a temporary password, which you can change under My Profile.'],
+    [/clock|forgot to/i, 'If you forgot to clock in or out, add a note in the Occurrence Log and let your supervisor know. They can correct your times from the Admin Dashboard.'],
+    [/qr|nfc|scan|code/i, 'If a QR code won\'t scan, check the app has camera permission, or type the site code printed under the QR code into the QR / NFC screen.'],
+    [/leave|holiday|time off/i, 'Open Submit Leave from the menu, tap the first day you want off, and choose the dates. You\'ll see a filled blue circle once it\'s approved.'],
+    [/shift|roster|cover/i, 'Your roster is under My Shifts. To pick up extra work, open Offered Shifts and tap Accept Shift. A manager will confirm it.'],
+    [/pay|timesheet|hours/i, 'Your hours and estimated pay are under My Timesheet. You can export them to a spreadsheet with the download button.'],
+  ];
+  const supportTeam = () => db.staff.filter((s) => s.isAdmin && s.active).slice(0, 3);
+  function supportWelcome() {
+    const tel = (n) => `<a class="tel" href="tel:${n.replace(/\s/g, '')}">${esc(n)}</a>`;
+    return `Hi there! 👋 Welcome to ${esc(CONFIG.shortName)} Support. I’m here to help with any questions or issues you may have—just let me know what you need help with.<br><br>
+      Prefer to speak to someone? Our telephone support team is also available:<br><br>
+      📞 Weekdays, 9am–5pm: ${tel(CONFIG.supportPhone)}<br>📞 Evenings &amp; weekends: ${tel(CONFIG.supportPhoneOoh)}<br><br>
+      📧 ${`<a class="tel" href="mailto:${CONFIG.supportEmail}">${esc(CONFIG.supportEmail)}</a>`}`;
+  }
   function viewSupport() {
-    const faq = [
-      ['I forgot my password', 'Tap "Forgot Password" on the sign-in screen. A manager will reset it and give you a temporary password.'],
-      ['I forgot to clock out', 'Tell your supervisor, who can correct the time from the Admin Dashboard. Add a note in the Occurrence Log too.'],
-      ['The QR code won\'t scan', 'Make sure the camera has permission, or type the site code printed under the QR code instead.'],
-      ['How do I pick up extra shifts?', 'Open Offered Shifts, choose a shift and tap Accept Shift. A manager will confirm it.'],
-    ];
-    return topbar(`VWG Support`) + `<div class="page white">
-      <a class="section" href="tel:${CONFIG.supportPhone.replace(/\s/g, '')}"><div class="body"><h3>Call Support</h3><p>${esc(CONFIG.supportPhone)}</p></div><span class="chev">${ic(I.right, 28, 1.6)}</span></a>
-      <a class="section" href="mailto:${CONFIG.supportEmail}"><div class="body"><h3>Email Support</h3><p>${esc(CONFIG.supportEmail)}</p></div><span class="chev">${ic(I.right, 28, 1.6)}</span></a>
-      <a class="section" href="tel:${CONFIG.emergencyPhone}"><div class="body"><h3 style="color:var(--red)">Emergency</h3><p>Call ${esc(CONFIG.emergencyPhone)}</p></div><span class="chev">${ic(I.right, 28, 1.6)}</span></a>
-      <div class="pad"><h3 style="margin:10px 4px">FAQ</h3>${faq.map(([q, a]) => `<details class="card"><summary><b>${esc(q)}</b></summary><p class="small" style="margin:8px 0 0">${esc(a)}</p></details>`).join('')}</div>
-    </div>`;
+    const u = me(); const team = supportTeam();
+    const msgs = db.support.filter((m) => m.staffId === u.id).sort((a, b) => a.time.localeCompare(b.time));
+    const faces = (size) => `<div class="faces">${team.map((s) => `<span class="face" style="width:${size}px;height:${size}px;background:${s.color}">${s.photo ? `<img src="${s.photo}" alt="">` : initials(s.name)}</span>`).join('') || `<span class="face" style="width:${size}px;height:${size}px">${ic(I.user, size / 2)}</span>`}</div>`;
+    const bubble = (m) => m.from === 'staff'
+      ? `<div class="sp-msg me"><div class="sp-bubble">${m.image ? `<img src="${m.image}" alt="Attachment">` : ''}${m.text ? esc(m.text) : ''}</div></div>`
+      : `<div class="sp-msg">${faces(22)}<div class="sp-bubble${m.html ? ' html' : ''}">${m.html || esc(m.text)}${m.authorId ? `<div class="sp-who">${esc(staffById(m.authorId)?.name.split(' ')[0] || 'Support')}</div>` : ''}</div></div>`;
+    return topbar(`${CONFIG.shortName} Support`) + `<div class="page white"><div class="sp-frame">
+      <div class="sp-head">${faces(48)}<div><b>${esc(team.map((s) => s.name.split(' ')[0]).join(', ') || 'Support Team')}</b><div>We typically reply in a few minutes</div></div></div>
+      <div class="sp-body" id="sp-body">${bubble({ from: 'support', html: supportWelcome() })}${msgs.map(bubble).join('')}${ui.supportTyping ? `<div class="sp-msg">${faces(22)}<div class="sp-bubble typing">•••</div></div>` : ''}</div>
+      <form class="sp-input" id="support-form">
+        <input name="text" placeholder="Ask me anything..." autocomplete="off" aria-label="Message">
+        <label class="sp-icon" aria-label="Attach a photo">${ic('<path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"/>', 24, 1.6)}<input type="file" accept="image/*" id="support-file" hidden></label>
+        <button type="submit" class="sp-icon" aria-label="Send">${ic(I.send, 24, 1.6)}</button>
+      </form>
+    </div></div>`;
+  }
+  function sendSupport(text, image) {
+    db.support.push({ id: uid(), staffId: db.session, from: 'staff', text, image: image || null, time: new Date().toISOString() });
+    save(); ui.supportTyping = true; render();
+    const hit = SUPPORT_FAQ.find(([re]) => re.test(text || ''));
+    const reply = hit ? hit[1] + '\n\nIf that doesn\'t solve it, reply here and a member of the team will pick it up.'
+      : `Thanks for your message. A member of the ${CONFIG.company} team will reply shortly. For anything urgent, please call us on ${CONFIG.supportPhone}.`;
+    const staffId = db.session;
+    setTimeout(() => {
+      db.support.push({ id: uid(), staffId, from: 'support', text: reply, authorId: null, time: new Date().toISOString() });
+      ui.supportTyping = false; save(); if (ui.route === 'support' && !ui.drawer) render();
+    }, 1200);
+  }
+  function sheetSupportReply(staffId) {
+    const s = staffById(staffId);
+    const msgs = db.support.filter((m) => m.staffId === staffId).sort((a, b) => a.time.localeCompare(b.time)).slice(-20);
+    openSheet(`<h2>Support · ${esc(s?.name || '')}</h2>
+      <div class="sp-body" style="max-height:40vh;overflow-y:auto;padding:0 0 10px">${msgs.map((m) => `<div class="sp-msg ${m.from === 'staff' ? '' : 'me'}"><div class="sp-bubble">${m.image ? `<img src="${m.image}" alt="">` : ''}${esc(m.text || '')}<div class="sp-who">${m.from === 'staff' ? esc(s?.name || '') : m.authorId ? esc(staffById(m.authorId)?.name || '') : 'Auto-reply'} · ${fmtStamp(m.time)}</div></div></div>`).join('')}</div>
+      <form class="form"><div class="field"><label>Reply</label><textarea class="input" name="text" required></textarea></div><div class="error"></div><button class="btn btn-gold btn-block" type="submit">Send Reply</button></form>`, (d) => {
+      db.support.push({ id: uid(), staffId, from: 'support', text: d.text.trim(), authorId: db.session, time: new Date().toISOString() });
+      save(); render(); toast('Reply sent');
+    });
   }
 
   // ---------- Profile ----------
   function viewProfile() {
     const u = me();
-    return topbar('My Profile', { right: `<button class="tb-btn" data-action="edit-me">Edit</button>` }) + `<div class="page">
-      <div class="drawer-head backdrop-art" style="padding-top:26px">
-        <div class="avatar-wrap"><div class="avatar-big">${avatarImg(u)}</div>
-          <label class="cam" aria-label="Change photo">${ic(I.camera, 18)}<input type="file" accept="image/*" id="photo-input" hidden></label></div>
-        <div style="color:#fff;font-size:20px;font-weight:600">${esc(u.name)}</div>
-        <div style="color:rgba(255,255,255,0.75)">${esc(u.role)}${u.isAdmin ? ' · Admin' : ''}</div>
-      </div>
-      <div class="pad"><div class="card"><div class="info-grid">
-        <div><span>Employee no.</span><b>${esc(u.empNo)}</b></div><div><span>Department</span><b>${esc(u.dept || '-')}</b></div>
-        <div><span>Email</span><b>${esc(u.email)}</b></div><div><span>Phone</span><b>${esc(u.phone || '-')}</b></div>
-        <div><span>SIA licence</span><b>${esc(u.licence || '-')}</b></div><div><span>Leave balance</span><b>${leaveBalance(u).toFixed(2)} days</b></div>
-        <div><span>Start date</span><b>${u.startDate ? dmy(parseYmd(u.startDate)) : '-'}</b></div><div><span>Emergency contact</span><b>${esc(u.emergency || '-')}</b></div>
-        <div style="grid-column:1/-1"><span>Address</span><b>${esc(u.address || '-')}</b></div>
-      </div></div>
-      <button class="btn btn-ghost btn-block" data-action="change-pw" style="margin-bottom:10px">Change Password</button>
-      <button class="btn btn-ghost btn-block" data-action="replay-intro" style="margin-bottom:10px">Replay Intro Slides</button>
-      <button class="btn btn-red btn-block" data-action="logout">Sign Out</button></div>
+    const [first, ...rest] = u.name.split(' ');
+    const row = (label, name, value, attrs = '') => `<label class="pf-row"><b>${label}</b><input name="${name}" value="${esc(value)}" ${attrs}></label>`;
+    const link = (route, label) => `<button type="button" class="pf-row" data-nav="${route}"><b>${label}</b><span class="chev">${ic(I.right, 22, 1.6)}</span></button>`;
+    return topbar('My Profile') + `<div class="page white"><form id="profile-form" class="pf">
+      <div class="pf-photo"><div class="avatar-wrap" style="width:150px;height:150px;margin:0 auto">
+        <div class="avatar-big" style="width:150px;height:150px">${avatarImg(u)}</div>
+        <label class="cam cam-lg" aria-label="Change photo">${ic(I.camera, 26, 2.2)}<input type="file" accept="image/*" id="photo-input" hidden></label></div></div>
+      ${row('First Name', 'first', first, 'required autocomplete="given-name"')}
+      ${row('Last Name', 'last', rest.join(' '), 'autocomplete="family-name"')}
+      ${row('Email', 'email', u.email, 'type="email" required autocapitalize="off"')}
+      ${row('Mobile', 'phone', u.phone, 'type="tel" autocomplete="tel"')}
+      ${row('Pin', 'pin', u.pin || '', 'inputmode="numeric" pattern="\\d{4}" maxlength="4"')}
+      ${link('mydocs', 'My Documents')}${link('compliance', 'My Compliance')}${link('companycompliance', 'Company Compliance')}
+      <button type="button" class="pf-row" data-action="change-pw"><b>Change Password</b><span class="chev">${ic(I.right, 22, 1.6)}</span></button>
+      <div class="error" id="profile-error" style="padding:6px 12px 0"></div>
+      <button class="btn btn-gold btn-block pf-save" type="submit">Save Changes</button>
+      <button type="button" class="btn btn-block pf-logout" data-action="logout">Logout</button>
+    </form></div>`;
+  }
+
+  // My Documents: files the staff member keeps on record (ID, licence card, certificates).
+  function viewMyDocs() {
+    const list = db.staffDocs.filter((d) => d.staffId === db.session).sort((a, b) => b.date.localeCompare(a.date));
+    return topbar('My Documents', { left: 'back', right: `<label class="tb-btn">Add<input type="file" id="mydoc-file" accept="image/*,application/pdf" hidden></label>` }) + `<div class="page white">
+      ${list.length ? list.map((d) => `<div class="section"><div class="body"><h3>${esc(d.name)}</h3><p class="l">${esc(d.kind)} · added ${dmy(new Date(d.date))}</p></div>
+        <a class="btn btn-ghost btn-sm" href="${d.data}" download="${esc(d.fileName)}" target="_blank" rel="noopener">View</a>
+        <button class="btn btn-ghost btn-sm" style="margin-left:6px;color:var(--red)" data-action="mydoc-delete" data-id="${d.id}" aria-label="Delete">${ic(I.trash, 16)}</button></div>`).join('')
+        : '<div class="empty-state">No documents yet.<br>Tap Add to upload your ID, licence or certificates.</div>'}
+    </div>`;
+  }
+  const COMPLIANCE = [
+    ['sia', 'SIA Licence', 'expiry'], ['rtw', 'Right to Work', 'expiry'], ['vetting', 'BS7858 Vetting', 'date'],
+    ['dbs', 'DBS Check', 'date'], ['firstaid', 'First Aid Certificate', 'expiry'],
+  ];
+  function complianceStatus(item, kind) {
+    if (!item || !item.date) return 'missing';
+    if (kind === 'date') return 'valid';
+    const days = (parseYmd(item.date) - parseYmd(ymd(new Date()))) / 86400000;
+    return days < 0 ? 'expired' : days <= 60 ? 'expiring' : 'valid';
+  }
+  const complianceIssues = (s) => COMPLIANCE.filter(([k, , kind]) => ['missing', 'expired'].includes(complianceStatus(s.compliance?.[k], kind))).length;
+  function viewCompliance() {
+    const u = me(); const c = u.compliance || {};
+    const label = { valid: 'Valid', expiring: 'Expiring Soon', expired: 'Expired', missing: 'Missing' };
+    return topbar('My Compliance', { left: 'back' }) + `<div class="page white">
+      ${COMPLIANCE.map(([k, title, kind]) => { const st = complianceStatus(c[k], kind); return `<button class="section" data-action="compliance-edit" data-id="${k}"><div class="body">
+        <h3>${title}</h3>${k === 'sia' ? `<p class="l">Licence : ${esc(u.licence || '-')}</p>` : c[k]?.ref ? `<p class="l">Reference : ${esc(c[k].ref)}</p>` : ''}
+        <p class="l">${kind === 'expiry' ? 'Expiry' : 'Completed'} : ${c[k]?.date ? dmy(parseYmd(c[k].date)) : '-'}</p>
+        <p class="l" style="margin-top:8px">Status : <span class="status st-${st}">${label[st]}</span></p></div><span class="chev">${ic(I.right, 22, 1.6)}</span></button>`; }).join('')}
+    </div>`;
+  }
+  function sheetCompliance(key) {
+    const u = me(); const [, title, kind] = COMPLIANCE.find(([k]) => k === key); const item = (u.compliance || {})[key] || {};
+    openSheet(`<h2>${title}</h2><form class="form">
+      ${key === 'sia' ? `<div class="field"><label>Licence number</label><input class="input" name="ref" inputmode="numeric" value="${esc(u.licence || '')}"></div>` : `<div class="field"><label>Reference (optional)</label><input class="input" name="ref" value="${esc(item.ref || '')}"></div>`}
+      <div class="field"><label>${kind === 'expiry' ? 'Expiry date' : 'Date completed'}</label><input class="input" type="date" name="date" value="${esc(item.date || '')}"></div>
+      <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Save</button></form>`, (d) => {
+      u.compliance = u.compliance || {};
+      if (key === 'sia') u.licence = d.ref.trim();
+      u.compliance[key] = { ref: key === 'sia' ? '' : d.ref.trim(), date: d.date };
+      save(); render(); toast(`${title} updated`);
+    });
+  }
+  function viewCompanyCompliance() {
+    const docs = db.documents.filter((d) => d.requireSign && (d.scope === 'company' || docsForTab('shift').includes(d)));
+    const done = (t) => db.trainingDone.some((x) => x.moduleId === t.id && x.staffId === db.session);
+    const out = docs.filter((d) => !docSigned(d)).length + db.training.filter((t) => t.q && !done(t)).length;
+    return topbar('Company Compliance', { left: 'back' }) + `<div class="page white">
+      <div class="pad"><div class="total-bar" style="margin:0"><div><span>Outstanding</span><b>${out}</b></div><div style="text-align:right"><span>Status</span><b>${out ? 'Action needed' : 'Up to date ✓'}</b></div></div></div>
+      <h3 style="margin:14px 12px 4px">Policies to sign</h3>
+      ${docs.map((d) => `<button class="section" data-nav="doc" data-id="${d.id}"><div class="body"><p>${esc(d.title)}</p><p class="l">${esc(docHeading(d))}</p></div>${docSigned(d) ? statusPill('signed') : '<span class="status st-pending">Outstanding</span>'}</button>`).join('') || '<div class="empty">Nothing to sign.</div>'}
+      <h3 style="margin:18px 12px 4px">Training</h3>
+      ${db.training.filter((t) => t.q).map((t) => `<button class="section" data-nav="module" data-id="${t.id}"><div class="body"><p>${esc(t.title)}</p></div>${done(t) ? statusPill('completed') : '<span class="status st-pending">Outstanding</span>'}</button>`).join('')}
     </div>`;
   }
 
   // ---------- Training ----------
+  const FILM_ICON = `<svg class="film" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" fill="#16263f"/><rect x="6" y="8" width="52" height="48" rx="5" fill="none" stroke="#fff" stroke-width="3.5"/>
+    <path d="M6 18h52M6 46h52" stroke="#fff" stroke-width="3.5"/><path d="M13 13h6M24 13h6M35 13h6M46 13h6M13 51h6M24 51h6M35 51h6M46 51h6" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M26 24v16l13-8z" fill="none" stroke="#fff" stroke-width="3.5" stroke-linejoin="round"/></svg>`;
+  function defaultTraining() {
+    return [
+      { id: 'v1', title: 'Clocking into Shifts', desc: 'A short video on how to clock into your shift', video: '', body: 'Open the menu and tap CLOCK IN, or open today\'s shift under My Shifts and tap "Clock In to this Shift". At sites with a QR code or NFC tag, tap QR / NFC and scan it to clock in at that site. Your location is saved when you clock in, if you allow it.', q: 'How do you clock in at a site that has a QR code?', options: ['Email your manager', 'Tap QR / NFC and scan the code', 'Wait for the shift to start'], answer: 1 },
+      { id: 'v2', title: 'Clocking Out', desc: 'This video will show you how to clock out at the end of your shift', video: '', body: 'Open the menu and tap CLOCK OUT. Any break you are still on ends automatically. Check My Timesheet to see the hours recorded.', q: 'Where can you check the hours you have worked?', options: ['My Timesheet', 'Team Message', 'Document Library'], answer: 0 },
+      { id: 'v3', title: 'Submitting Leave', desc: 'A short video on how to submit for time off', video: '', body: 'Open Submit Leave and tap the first day you need off, then choose the dates and leave type. A hollow blue circle means waiting for approval; a filled circle means approved.', q: 'What does a filled blue circle on the leave calendar mean?', options: ['Leave approved', 'Leave declined', 'Bank holiday'], answer: 0 },
+      { id: 'v4', title: 'My Shifts page', desc: `A short video on how to use the My Shifts page of the ${CONFIG.shortName} app`, video: '', body: 'Use the arrows to move between weeks. Tap a shift to see notes, open the site in Maps and view site contacts. You can also offer a shift for cover.', q: 'How do you see site contacts for a shift?', options: ['Tap the shift, then View Contacts', 'Look in Training', 'You cannot'], answer: 0 },
+      { id: 'v5', title: 'Lone Working & Welfare Checks', desc: 'Keeping yourself safe when working alone', video: '', body: `When working alone you must complete a Welfare Check at least every ${CONFIG.welfareMinutes} minutes. If you are in danger, press "I need help" and call ${CONFIG.emergencyPhone}.`, q: 'How often must you complete a welfare check when alone?', options: ['Once a shift', `Every ${CONFIG.welfareMinutes} minutes`, 'Never'], answer: 1 },
+    ];
+  }
   function viewTraining() {
-    const done = (t) => db.trainingDone.find((x) => x.moduleId === t.id && x.staffId === db.session);
-    const n = TRAINING.filter(done).length;
-    return topbar('Training Module') + `<div class="page white"><div class="pad">
-      <div style="display:flex;justify-content:space-between;margin:6px 2px"><b>Your progress</b><span>${n} / ${TRAINING.length}</span></div>
-      <div class="progress" style="margin-bottom:10px"><div style="width:${(n / TRAINING.length) * 100}%"></div></div></div>
-      ${TRAINING.map((t) => `<button class="menu-item" style="height:auto;padding:12px 16px" data-nav="module" data-id="${t.id}"><span><b>${esc(t.title)}</b><br><span class="small muted">${t.mins} min · ${done(t) ? '✓ Completed ' + dmy(new Date(done(t).date)) : 'Not started'}</span></span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>`).join('')}
+    const u = me();
+    const done = (t) => db.trainingDone.some((x) => x.moduleId === t.id && x.staffId === db.session);
+    return topbar('Training Module', { right: u.isAdmin ? `<button class="tb-btn" data-action="module-new">Add</button>` : '' }) + `<div class="page white">
+      ${db.training.map((t) => `<button class="tr-row" data-nav="module" data-id="${t.id}">${FILM_ICON}<div><b>${esc(t.title)}</b><p>${esc(t.desc)}</p>${done(t) ? '<span class="tr-done">✓ Completed</span>' : ''}</div></button>`).join('') || '<div class="empty-state">No training modules yet.</div>'}
     </div>`;
   }
+  function videoEmbed(url) {
+    if (!url) return `<div class="video-ph">${FILM_ICON}<span>Video coming soon — read the guide below.</span></div>`;
+    const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{6,})/);
+    if (yt) return `<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/${yt[1]}" title="Training video" allow="accelerometer; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>`;
+    const vm = url.match(/vimeo\.com\/(\d+)/);
+    if (vm) return `<div class="video"><iframe src="https://player.vimeo.com/video/${vm[1]}" title="Training video" allow="fullscreen; picture-in-picture" allowfullscreen></iframe></div>`;
+    return `<div class="video"><video src="${esc(url)}" controls playsinline></video></div>`;
+  }
   function viewModule() {
-    const t = TRAINING.find((x) => x.id === ui.params.id) || TRAINING[0];
+    const t = db.training.find((x) => x.id === ui.params.id);
+    if (!t) return topbar('Training', { left: 'back' }) + '<div class="page white"><div class="empty-state">Module not found.</div></div>';
     const done = db.trainingDone.find((x) => x.moduleId === t.id && x.staffId === db.session);
-    return topbar('Training', { left: 'back' }) + `<div class="page white"><div class="pad">
-      <h2 style="margin:6px 0 2px">${esc(t.title)}</h2><div class="small muted" style="margin-bottom:14px">${t.mins} minutes</div>
-      <div class="doc-body">${esc(t.body)}</div>
-      <div class="card" style="margin-top:20px"><h3>Quick check</h3><p style="margin-top:0">${esc(t.q)}</p>
+    return topbar('Training', { left: 'back' }) + `<div class="page white">${videoEmbed(t.video)}<div class="pad">
+      <h2 style="margin:6px 0 2px">${esc(t.title)}</h2><div class="small muted" style="margin-bottom:14px">${esc(t.desc)}</div>
+      <div class="doc-body">${esc(t.body || '')}</div>
+      ${t.q ? `<div class="card" style="margin-top:20px"><h3>Quick check</h3><p style="margin-top:0">${esc(t.q)}</p>
         <form id="quiz" class="form">${t.options.map((o, i) => `<label class="check" style="font-weight:400"><input type="radio" name="a" value="${i}" required>${esc(o)}</label>`).join('')}
         <div class="error"></div><button class="btn btn-gold btn-block" type="submit">${done ? 'Retake' : 'Submit answer'}</button></form>
-        ${done ? `<div class="small muted" style="margin-top:8px">✓ Completed on ${dmy(new Date(done.date))}</div>` : ''}</div>
+        ${done ? `<div class="small muted" style="margin-top:8px">✓ Completed on ${dmy(new Date(done.date))}</div>` : ''}</div>`
+        : done ? `<div class="small muted" style="margin-top:18px">✓ Watched on ${dmy(new Date(done.date))}</div>` : `<button class="btn btn-gold btn-block" style="margin-top:20px" data-action="module-done" data-id="${t.id}">Mark as Watched</button>`}
+      ${me().isAdmin ? `<button class="btn btn-ghost btn-block" style="margin-top:10px;color:var(--red)" data-action="module-delete" data-id="${t.id}">${ic(I.trash, 18)}Delete module</button>` : ''}
     </div></div>`;
+  }
+  function sheetModuleNew() {
+    openSheet(`<h2>Add Training Video</h2><form class="form">
+      <div class="field"><label>Title</label><input class="input" name="title" required></div>
+      <div class="field"><label>Short description</label><input class="input" name="desc" required></div>
+      <div class="field"><label>Video link (YouTube, Vimeo or .mp4)</label><input class="input" name="video" type="url" placeholder="https://"></div>
+      <div class="field"><label>Written guide (optional)</label><textarea class="input" name="body"></textarea></div>
+      <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Publish</button></form>`, (d) => {
+      db.training.push({ id: uid(), title: d.title.trim(), desc: d.desc.trim(), video: d.video.trim(), body: d.body.trim() });
+      save(); render(); toast('Training video added');
+    });
   }
 
   // ---------- Timesheet ----------
@@ -842,7 +968,7 @@
         <div class="card"><h3>Recent clock-ins</h3>${db.entries.slice().sort((a, b) => b.clockIn.localeCompare(a.clockIn)).slice(0, 8).map((e) => entryRow(e, true)).join('') || '<div class="empty">No activity yet.</div>'}</div>`;
     } else if (tab === 'staff') {
       body = `<button class="btn btn-gold btn-block" data-action="staff-new" style="margin-bottom:12px">${ic(I.plus, 18)}Add Staff Member</button>
-        <div class="card">${db.staff.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => `<button class="item" data-action="staff-edit" data-id="${s.id}">${avatar(s)}<div class="item-main"><div class="item-title">${esc(s.name)}${s.active ? '' : ' <span class="small muted">(inactive)</span>'}</div><div class="item-sub">${esc(s.empNo)} · ${esc(s.role)}${s.isAdmin ? ' · Admin' : ''}</div></div><span class="chev">${ic(I.right, 20)}</span></button>`).join('')}</div>`;
+        <div class="card">${db.staff.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => `<button class="item" data-action="staff-edit" data-id="${s.id}">${avatar(s)}<div class="item-main"><div class="item-title">${esc(s.name)}${s.active ? '' : ' <span class="small muted">(inactive)</span>'}</div><div class="item-sub">${esc(s.empNo)} · ${esc(s.role)}${s.isAdmin ? ' · Admin' : ''}${!s.isAdmin && complianceIssues(s) ? ` · <b style="color:var(--red)">${complianceIssues(s)} compliance issue(s)</b>` : ''}</div></div><span class="chev">${ic(I.right, 20)}</span></button>`).join('')}</div>`;
     } else if (tab === 'sites') {
       body = `<button class="btn btn-gold btn-block" data-action="site-new" style="margin-bottom:12px">${ic(I.plus, 18)}Add Site</button>
         <div class="card">${db.sites.map((s) => `<button class="item" data-action="site-edit" data-id="${s.id}"><div class="item-main"><div class="item-title">${esc(s.name)}</div><div class="item-sub">${esc(s.customer)} · ${esc(s.city)} · QR/NFC code <b>${esc(s.code)}</b></div></div><span class="chev">${ic(I.right, 20)}</span></button>`).join('') || '<div class="empty">No sites yet.</div>'}</div>`;
@@ -856,7 +982,8 @@
       const leave = db.leave.slice().sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1) || b.from.localeCompare(a.from));
       const inc = db.incidents.slice().sort((a, b) => (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1) || b.time.localeCompare(a.time));
       const resets = db.resetRequests.filter((r) => !r.done);
-      body = `${resets.length ? `<div class="card"><h3>Password resets</h3>${resets.map((r) => `<div class="item"><div class="item-main"><div class="item-title">${esc(r.email)}</div><div class="item-sub">${fmtStamp(r.time)}</div></div><button class="btn btn-navy btn-sm" data-action="reset-do" data-id="${r.id}">Reset</button></div>`).join('')}</div>` : ''}
+      const chats = [...new Set(db.support.map((m) => m.staffId))].map((sid) => { const ms = db.support.filter((m) => m.staffId === sid).sort((a, b) => a.time.localeCompare(b.time)); return { sid, last: ms[ms.length - 1], waiting: !ms.some((m) => m.from === 'support' && m.authorId && m.time > (ms.filter((x) => x.from === 'staff').pop()?.time || '')) }; }).sort((a, b) => b.last.time.localeCompare(a.last.time));
+      body = `${chats.length ? `<div class="card"><h3>Support chats</h3>${chats.map((c) => `<div class="item"><div class="item-main"><div class="item-title">${esc(staffById(c.sid)?.name || 'Former staff')}</div><div class="item-sub">${esc(c.last.text || '📷 Photo').slice(0, 60)} · ${fmtStamp(c.last.time)}</div></div><button class="btn ${c.waiting ? 'btn-gold' : 'btn-ghost'} btn-sm" data-action="support-reply" data-id="${c.sid}">Reply</button></div>`).join('')}</div>` : ''}${resets.length ? `<div class="card"><h3>Password resets</h3>${resets.map((r) => `<div class="item"><div class="item-main"><div class="item-title">${esc(r.email)}</div><div class="item-sub">${fmtStamp(r.time)}</div></div><button class="btn btn-navy btn-sm" data-action="reset-do" data-id="${r.id}">Reset</button></div>`).join('')}</div>` : ''}
         <div class="card"><h3>Shifts to confirm</h3>${accepted.length ? accepted.map((s) => `<div class="item"><div class="item-main"><div class="item-title">${esc(staffById(s.staffId)?.name)}</div><div class="item-sub">${dayTitle(s.date)} · ${s.start} - ${s.end} · ${esc(siteById(s.siteId)?.name || '')}</div></div>${approveBtns('shift', s.id)}</div>`).join('') : '<div class="empty">Nothing to confirm.</div>'}</div>
         <div class="card"><h3>Leave</h3>${leave.length ? leave.map((l) => leaveRow(l, true)).join('') : '<div class="empty">No leave requests.</div>'}</div>
         <div class="card"><h3>Incidents & forms</h3>${inc.length ? inc.map((i) => incidentRow(i, true)).join('') : '<div class="empty">No submissions.</div>'}</div>`;
@@ -998,16 +1125,6 @@
       save(); render(); toast('Saved');
     });
   }
-  function sheetEditMe() {
-    const u = me();
-    openSheet(`<h2>Edit My Details</h2><form class="form">
-      <div class="field"><label>Phone</label><input class="input" type="tel" name="phone" value="${esc(u.phone)}"></div>
-      <div class="field"><label>Emergency contact</label><input class="input" name="emergency" value="${esc(u.emergency)}" placeholder="Name & number"></div>
-      <div class="field"><label>Address</label><textarea class="input" name="address">${esc(u.address)}</textarea></div>
-      <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Save</button></form>`, (d) => {
-      Object.assign(u, { phone: d.phone.trim(), emergency: d.emergency.trim(), address: d.address.trim() }); save(); render(); toast('Details updated');
-    });
-  }
   function sheetChangePw() {
     openSheet(`<h2>Change Password</h2><form class="form">
       <div class="field"><label>Current password</label><input class="input" type="password" name="old" required></div>
@@ -1063,21 +1180,28 @@
     });
     return toCsv(rows);
   }
-  function resizePhoto(file) {
+  function resizePhoto(file, size = 256, square = true) {
     return new Promise((resolve, reject) => {
       const img = new Image(); const url = URL.createObjectURL(file);
       img.onload = () => {
-        const size = 256; const c = document.createElement('canvas'); c.width = c.height = size;
-        const k = Math.max(size / img.width, size / img.height); const w = img.width * k; const h = img.height * k;
-        c.getContext('2d').drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
-        URL.revokeObjectURL(url); resolve(c.toDataURL('image/jpeg', 0.85));
+        const c = document.createElement('canvas'); const ctx = c.getContext('2d');
+        if (square) {
+          c.width = c.height = size;
+          const k = Math.max(size / img.width, size / img.height); const w = img.width * k; const h = img.height * k;
+          ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        } else {
+          const k = Math.min(1, size / Math.max(img.width, img.height));
+          c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+        }
+        URL.revokeObjectURL(url); resolve(c.toDataURL('image/jpeg', 0.82));
       };
       img.onerror = reject; img.src = url;
     });
   }
 
   // ---------- Render ----------
-  const VIEWS = { home: viewHome, shifts: viewShifts, offered: viewOffered, shift: viewShift, occurrence: viewOccurrence, leave: viewLeave, forms: viewForms, docs: viewDocs, doc: viewDoc, messages: viewMessages, thread: viewThread, register: viewRegister, welfare: viewWelfare, support: viewSupport, profile: viewProfile, training: viewTraining, module: viewModule, timesheet: viewTimesheet, admin: viewAdmin };
+  const VIEWS = { home: viewHome, shifts: viewShifts, offered: viewOffered, shift: viewShift, occurrence: viewOccurrence, leave: viewLeave, forms: viewForms, docs: viewDocs, doc: viewDoc, messages: viewMessages, thread: viewThread, register: viewRegister, welfare: viewWelfare, support: viewSupport, profile: viewProfile, training: viewTraining, module: viewModule, mydocs: viewMyDocs, compliance: viewCompliance, companycompliance: viewCompanyCompliance, timesheet: viewTimesheet, admin: viewAdmin };
   function render() {
     clearInterval(ticker);
     const app = $('#app');
@@ -1127,9 +1251,24 @@
         const inp = $('#composer input'); if (inp) inp.focus();
       });
     }
+    const pf = $('#profile-form');
+    if (pf) pf.addEventListener('submit', (ev) => {
+      ev.preventDefault(); const d = Object.fromEntries(new FormData(pf).entries()); const u = me(); const err = $('#profile-error');
+      const email = d.email.trim().toLowerCase(); const name = `${d.first.trim()} ${d.last.trim()}`.trim();
+      if (!name) { err.textContent = 'Enter your name'; return; }
+      if (!/^\S+@\S+\.\S+$/.test(email)) { err.textContent = 'Enter a valid email address'; return; }
+      if (db.staff.some((x) => x.email.toLowerCase() === email && x.id !== u.id)) { err.textContent = 'That email is already used by another account'; return; }
+      if (!/^\d{4}$/.test(d.pin)) { err.textContent = 'PIN must be 4 digits'; return; }
+      Object.assign(u, { name, email, phone: d.phone.trim(), pin: d.pin }); save(); render(); toast('Changes saved');
+    });
+    const sf = $('#support-form');
+    if (sf) {
+      const body = $('#sp-body'); if (body) body.scrollTop = body.scrollHeight;
+      sf.addEventListener('submit', (ev) => { ev.preventDefault(); const text = sf.text.value.trim(); if (!text) return; sendSupport(text); const inp = $('#support-form input[name=text]'); if (inp) inp.focus(); });
+    }
     const qz = $('#quiz');
     if (qz) qz.addEventListener('submit', (ev) => {
-      ev.preventDefault(); const t = TRAINING.find((x) => x.id === ui.params.id) || TRAINING[0];
+      ev.preventDefault(); const t = db.training.find((x) => x.id === ui.params.id); if (!t) return;
       const a = Number(new FormData(qz).get('a'));
       if (a !== t.answer) { qz.querySelector('.error').textContent = 'Not quite — read the module again and retry.'; return; }
       db.trainingDone = db.trainingDone.filter((x) => !(x.moduleId === t.id && x.staffId === db.session));
@@ -1138,14 +1277,31 @@
   }
 
   document.addEventListener('change', async (ev) => {
-    if (ev.target.id !== 'photo-input' || !ev.target.files[0]) return;
+    const file = ev.target.files?.[0];
+    if (ev.target.id === 'support-file' && file) {
+      try { sendSupport('', await resizePhoto(file, 900, false)); } catch (e) { toast('Could not read that image'); }
+      return;
+    }
+    if (ev.target.id === 'mydoc-file' && file) {
+      const isImg = file.type.startsWith('image/');
+      if (!isImg && file.size > 1024 * 1024) { toast('PDFs must be under 1 MB on this device'); return; }
+      const name = prompt('Document name (e.g. Passport, SIA licence card):', file.name.replace(/\.[^.]+$/, ''));
+      if (name === null) return;
+      try {
+        const data = isImg ? await resizePhoto(file, 1400, false) : await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+        db.staffDocs.push({ id: uid(), staffId: db.session, name: name.trim() || file.name, kind: isImg ? 'Image' : 'PDF', fileName: isImg ? file.name.replace(/\.[^.]+$/, '') + '.jpg' : file.name, data, date: new Date().toISOString() });
+        save(); render(); toast('Document uploaded');
+      } catch (e) { toast('Could not read that file'); }
+      return;
+    }
+    if (ev.target.id !== 'photo-input' || !file) return;
     try { me().photo = await resizePhoto(ev.target.files[0]); save(); render(); toast('Photo updated'); } catch (e) { toast('Could not read that image'); }
   });
 
   document.addEventListener('click', async (ev) => {
     const nav = ev.target.closest('[data-nav]');
     // Detail pages get a Back button; top-level pages reset history and show the menu button.
-    if (nav) { closeSheet(); go(nav.dataset.nav, { id: nav.dataset.id }, ['shift', 'doc', 'module', 'thread'].includes(nav.dataset.nav)); return; }
+    if (nav) { closeSheet(); go(nav.dataset.nav, { id: nav.dataset.id }, ['shift', 'doc', 'module', 'thread', 'mydocs', 'compliance', 'companycompliance'].includes(nav.dataset.nav)); return; }
     const ts = ev.target.closest('[data-ts]'); if (ts) { ui.tsRange = ts.dataset.ts; render(); return; }
     const at = ev.target.closest('[data-admin]'); if (at) { ui.adminTab = at.dataset.admin; render(); return; }
     const dt = ev.target.closest('[data-doctab]'); if (dt) { ui.docTab = dt.dataset.doctab; render(); return; }
@@ -1228,7 +1384,12 @@
         getGeo().then((g) => { if (g) { w.geo = g; save(); } });
         break;
       }
-      case 'edit-me': sheetEditMe(); break;
+      case 'compliance-edit': sheetCompliance(id); break;
+      case 'mydoc-delete': if (confirm('Delete this document?')) { db.staffDocs = db.staffDocs.filter((d) => d.id !== id); save(); render(); } break;
+      case 'module-new': sheetModuleNew(); break;
+      case 'module-done': db.trainingDone.push({ moduleId: id, staffId: db.session, date: new Date().toISOString() }); save(); render(); toast('Marked as watched ✓'); break;
+      case 'module-delete': if (confirm('Delete this training module?')) { db.training = db.training.filter((t) => t.id !== id); save(); back(); } break;
+      case 'support-reply': sheetSupportReply(id); break;
       case 'change-pw': sheetChangePw(); break;
       case 'export-mine': download(`timesheet-${me().empNo}-${ymd(new Date())}.csv`, timesheetCsv(db.entries.filter((e) => e.staffId === db.session))); break;
       case 'export-all': download(`timesheets-${ymd(new Date())}.csv`, timesheetCsv(db.entries)); break;

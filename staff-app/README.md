@@ -25,9 +25,9 @@ It is a Progressive Web App built with plain HTML, CSS and JavaScript. There is 
 | Team Message | Search, plus conversations: All Staff, one group per site, and direct messages. |
 | Electronic Sign On Register | Week picker and a day strip. For the chosen site (tap the site name to change it), each rostered or signed-on staff member with their licence number and sign-on / sign-out times. **Share** sends the register, or downloads a CSV where sharing isn't supported. Visitor sign-in is further down the page. |
 | Welfare Check | **I'M OK** check-in, due every 60 minutes while on shift, and **I NEED HELP**, which alerts managers and calls 999. |
-| VWG Support | Call or email support, emergency number, and an FAQ. |
-| My Profile | Staff details, editing your own contact details, changing your password. |
-| Training Module | Short modules, each with a quiz, plus a progress bar. |
+| VWG Support | Chat-style help desk. It opens with a welcome message giving the daytime and out-of-hours phone numbers. Common questions (password, clocking, QR, leave, shifts, pay) get an instant answer. Staff can attach photos. Managers reply from **Admin → Requests → Support chats**. |
+| My Profile | Photo with camera button. Editable First Name, Last Name, Email, Mobile and Pin, with **Save Changes** and **Logout**. **My Documents**: upload ID, licence card or certificates (images, or PDFs under 1 MB). **My Compliance**: SIA licence, Right to Work, BS7858 vetting, DBS and First Aid, each shown as Valid, Expiring Soon, Expired or Missing. **Company Compliance**: policies still to sign and training still to finish. |
+| Training Module | Video list, each with a film icon, title and description. Opening one plays the video (YouTube, Vimeo or .mp4 link) and shows a written guide and a quick quiz. Admins can add or delete videos. |
 | My Timesheet | Hours for this week, last week or this month, estimated pay, and CSV export. |
 | Admin Dashboard (admins only) | Live (who's on shift, who's missing, welfare alerts), Staff, Sites (address, contacts, QR/NFC code), Roster, Requests (confirm shifts, leave, incidents, password resets), Reports (hours, wage cost, CSV exports, backup and restore). |
 
@@ -51,7 +51,7 @@ The `CONFIG` block at the top of `app.js` holds:
 - company name
 - domain
 - currency
-- support phone and email
+- support phone numbers (daytime and out of hours) and email
 - emergency number
 - welfare check interval
 

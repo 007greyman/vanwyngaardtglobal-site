@@ -400,3 +400,69 @@ textarea.input { height: 110px; padding: 10px 12px; resize: vertical; }
 .reg-main { flex: 1; min-width: 0; font-size: 15px; line-height: 1.6; }
 .reg-times { display: grid; grid-template-columns: 1fr 1fr; margin-top: 12px; text-align: center; }
 .reg-times span { display: block; font-weight: 600; min-height: 24px; margin-top: 4px; }
+
+/* Extra status colours */
+.st-signed, .st-valid { background: var(--green); }
+.st-expiring { background: var(--amber); }
+.st-expired, .st-missing { background: var(--red); }
+
+/* Support chat */
+.sp-frame {
+  margin: 14px 12px 0; border: 3px solid #111; border-bottom: 0; border-radius: 2px 2px 0 0;
+  display: flex; flex-direction: column; height: calc(100vh - var(--bar-h) - var(--safe-t) - 14px);
+  height: calc(100dvh - var(--bar-h) - var(--safe-t) - 14px); background: #fff;
+}
+.sp-head { background: #435b77; color: #fff; display: flex; align-items: center; gap: 14px; padding: 16px 16px; }
+.sp-head b { font-size: 17px; }
+.sp-head div div { font-size: 14px; opacity: 0.95; }
+.faces { display: flex; flex-shrink: 0; }
+.face {
+  border-radius: 50%; border: 2px solid #fff; margin-left: -10px; overflow: hidden; display: grid; place-items: center;
+  background: var(--navy); color: #fff; font-weight: 700; font-size: 12px;
+}
+.face:first-child { margin-left: 0; }
+.face img { width: 100%; height: 100%; object-fit: cover; }
+.sp-msg .face { border-width: 1px; margin-left: -7px; font-size: 7px; }
+.sp-msg .faces .face:first-child { margin-left: 0; }
+.sp-body { flex: 1; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 12px; }
+.sp-msg { display: flex; gap: 8px; align-items: flex-start; }
+.sp-msg .faces { width: 44px; margin-top: 6px; }
+.sp-bubble { background: #f3f2f1; border-radius: 14px; padding: 14px 16px; line-height: 1.75; font-size: 15px; max-width: 86%; white-space: pre-line; }
+.sp-bubble img { display: block; max-width: 100%; border-radius: 8px; margin-bottom: 4px; }
+.sp-bubble .tel { color: #1a0dab; text-decoration: underline; }
+.sp-bubble.typing { letter-spacing: 3px; color: var(--muted); }
+.sp-who { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.2; }
+.sp-msg.me { justify-content: flex-end; }
+.sp-msg.me .sp-bubble { background: var(--navy); color: #fff; }
+.sp-msg.me .sp-who { color: rgba(255,255,255,0.7); }
+.sp-input {
+  display: flex; align-items: center; gap: 4px; margin: 8px 12px calc(12px + var(--safe-b));
+  border: 1.5px solid #555; border-radius: 30px; height: 56px; padding: 0 10px 0 22px;
+}
+.sp-input input[name=text] { flex: 1; min-width: 0; border: 0; outline: none; font-size: 18px; background: transparent; }
+.sp-icon { width: 44px; height: 44px; display: grid; place-items: center; color: #999; cursor: pointer; }
+
+/* Profile */
+.pf-photo { padding: 12px 0 14px; border-bottom: 1px solid #d4d7dc; margin: 0 0 0 10px; }
+.cam-lg { width: 56px; height: 56px; right: -6px; bottom: -4px; background: #fff; color: #000; border: 1.5px solid #888; }
+.pf-row {
+  display: flex; align-items: center; gap: 12px; width: calc(100% - 10px); margin-left: 10px; text-align: left;
+  min-height: 54px; padding: 0 10px 0 2px; border-bottom: 1px solid #d4d7dc; font-size: 18px;
+}
+.pf-row b { flex-shrink: 0; flex: 1; }
+.pf-row input { flex: 1.4; min-width: 0; border: 0; outline: none; text-align: right; font-size: 18px; background: transparent; padding: 12px 0; }
+.pf-row input:focus { color: var(--blue); }
+.pf-save { margin: 10px 10px 0; width: calc(100% - 20px); height: 50px; font-weight: 400; font-size: 17px; border-radius: 6px; }
+.pf-logout { margin: 12px 10px 0; width: calc(100% - 20px); height: 50px; font-weight: 400; font-size: 17px; background: #f4f4f5; border-radius: 6px; }
+
+/* Training */
+.tr-row { display: flex; gap: 12px; width: 100%; text-align: left; padding: 12px 10px 14px; border-bottom: 1px solid #d4d7dc; }
+.tr-row .film { width: 64px; height: 64px; flex-shrink: 0; }
+.tr-row b { display: block; font-size: 19px; font-weight: 600; line-height: 1.2; }
+.tr-row p { margin: 3px 0 0; font-size: 14px; line-height: 1.3; }
+.tr-done { display: inline-block; margin-top: 4px; font-size: 12px; color: var(--green); font-weight: 600; }
+.video { position: relative; aspect-ratio: 16 / 9; background: #000; }
+.video iframe, .video video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.video-ph { aspect-ratio: 16 / 9; background: var(--navy); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 14px; }
+.video-ph .film { width: 64px; height: 64px; }
+.sp-bubble.html { white-space: normal; }
