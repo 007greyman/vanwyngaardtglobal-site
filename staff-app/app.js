@@ -229,7 +229,7 @@
   }
 
   // ---------- UI state ----------
-  const ui = { route: CONFIG.startPage, params: {}, stack: [], drawer: false, slide: 0, weekOffset: 0, tsRange: 'week', adminTab: 'live', showPw: false, supportTyping: false, leaveMonth: 0, formQ: '', docTab: 'company', docQ: '', msgQ: '', regDay: null, regSite: null };
+  const ui = { route: CONFIG.startPage, params: {}, stack: [], drawer: false, slide: 0, weekOffset: 0, tsRange: 'week', adminTab: 'live', showPw: false, supportTyping: false, leaveMonth: 0, formQ: '', docTab: 'site', docQ: '', msgQ: '', regDay: null, regSite: null };
   let ticker = null;
   let scanStop = null;
 
@@ -492,7 +492,7 @@
         <h3>Approved</h3><div class="lg"><span class="lg-dot filled"></span>Leave</div>
         <h3>Fixed Leave Balance</h3><div class="lg">${leaveBalance(u).toFixed(2)} Days</div>
       </div>
-      <div class="pad"><button class="btn btn-gold btn-block" data-action="leave-day" data-date="${ymd(new Date())}">${ic(I.plus, 18)}Request Leave</button></div>
+      <p class="small muted" style="margin:14px 16px 0">Tap a date to request leave.</p>
       ${list.length ? `<div class="pad" style="padding-top:0"><h3 style="margin:6px 4px">My Requests</h3><div class="card">${list.map((l) => leaveRow(l)).join('')}</div></div>` : ''}
     </div>`;
   }
@@ -665,7 +665,7 @@
     list.sort((a, b) => (b.last?.time || '').localeCompare(a.last?.time || ''));
     const icon = (t) => t.kind === 'dm' ? avatar(t.staff) : `<div class="avatar" style="background:var(--navy);color:var(--gold-light)">${ic(t.kind === 'site' ? I.shield : I.chat, 20)}</div>`;
     return topbar('Team Message', { right: refreshBtn }) + `<div class="page white">
-      <div class="searchbar">${ic(I.search, 22)}<input id="msg-q" value="${esc(ui.msgQ)}" autocomplete="off" aria-label="Search people, sites or messages" placeholder="Search"></div>
+      <div class="searchbar flush">${ic(I.search, 22)}<input id="msg-q" value="${esc(ui.msgQ)}" autocomplete="off" aria-label="Search people, sites or messages"></div>
       <div id="msg-list">${list.map((t) => `<button class="thread" data-nav="thread" data-id="${t.id}">${icon(t)}<div class="item-main"><div class="item-title">${esc(t.name)}</div>
         <div class="item-sub">${t.last ? esc((t.last.staffId === u.id ? 'You: ' : '') + t.last.text).slice(0, 60) : 'No messages yet'}</div></div>
         <div class="small muted">${t.last ? fmtTime(new Date(t.last.time)) : ''}</div></button>`).join('')}</div>
