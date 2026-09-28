@@ -15,7 +15,7 @@ It is a Progressive Web App built with plain HTML, CSS and JavaScript. There is 
 
 | Menu item | What it does |
 | --- | --- |
-| Home | Live clock, shift timer, breaks, quick tiles, today's and upcoming shifts. |
+| Dashboard | Live clock, shift timer, breaks, quick tiles, and today's and upcoming shifts. After signing in, the app opens on **My Shifts**; change `startPage` in `CONFIG` to open somewhere else. |
 | Occurrence Log | Timestamped site log. Clock-ins, checkpoints, visitors and forms are added to it automatically. |
 | My Shifts | Week picker (`Sep 28 - Oct 04`) and shift cards. Tapping one opens **My Roster Detail**: notes, **Open in Maps**, **View Contacts**, clock in, and offer the shift for cover. |
 | Offered Shifts | Open shifts for each week. **Accept Shift** sends the shift to a manager to confirm. |
@@ -54,6 +54,8 @@ The `CONFIG` block at the top of `app.js` holds:
 - support phone numbers (daytime and out of hours) and email
 - emergency number
 - welfare check interval
+- `startPage`: the first screen after signing in
+- `loginBackground`: an optional team photo shown behind the sign-in screen and menu header. Put the image file (for example `login-bg.jpg`) in `staff-app/` and set its name here. It's tinted navy automatically.
 
 Brand colours are CSS variables at the top of `styles.css`: navy `#16263f` and gold `#b09244`.
 

@@ -43,7 +43,12 @@ a { color: inherit; text-decoration: none; }
 /* ---------- Dark "photo" backdrop used on login + drawer header ---------- */
 .backdrop-art {
   background-color: var(--navy);
+  background-size: cover;
+  background-position: center;
+  /* --bg-photo is set from CONFIG.loginBackground in app.js; the photo shows through the navy tint. */
   background-image:
+    linear-gradient(180deg, rgba(27,46,75,0.80) 0%, rgba(22,38,63,0.84) 55%, rgba(17,31,53,0.90) 100%),
+    var(--bg-photo, none),
     radial-gradient(ellipse 60% 45% at 25% 35%, rgba(255,255,255,0.07), transparent 70%),
     radial-gradient(ellipse 55% 40% at 78% 38%, rgba(255,255,255,0.06), transparent 70%),
     radial-gradient(ellipse 40% 60% at 30% 95%, rgba(0,0,0,0.35), transparent 70%),
