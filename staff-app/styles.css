@@ -471,3 +471,4 @@ textarea.input { height: 110px; padding: 10px 12px; resize: vertical; }
 .video-ph { aspect-ratio: 16 / 9; background: var(--navy); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 14px; }
 .video-ph .film { width: 64px; height: 64px; }
 .sp-bubble.html { white-space: normal; }
+.searchbar.flush { margin-top: 0; border-radius: 0 0 12px 12px; }
