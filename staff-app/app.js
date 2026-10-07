@@ -24,7 +24,12 @@
     supabaseAnonKey: '',
   }, window.VWG_CONFIG || {}, { version: 'v1.2.0(3)' });
   const CLOUD = !!(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
-  const STORE_KEY = CLOUD ? 'vwg-staff-cloud' : 'vwg-staff-v2';
+  // hq.html sets VWG_HQ: the desktop console for managers. It keeps its own sign-in and
+  // saved copy, so it never signs out or mixes with the staff app in the same browser.
+  const HQ = !!window.VWG_HQ;
+  if (HQ) CONFIG.startPage = 'hq';
+  const HQ_ONLY = 'The HQ console is for managers only. Staff should use the VWG Staff app.';
+  const STORE_KEY = HQ ? (CLOUD ? 'vwg-hq-cloud' : 'vwg-hq-demo') : CLOUD ? 'vwg-staff-cloud' : 'vwg-staff-v2';
   const COLORS = ['#1a1a1a', '#0b6e0b', '#b86e00', '#6b3fa0', '#b5461b', '#0e7490', '#a3195b', '#4d7c0f'];
 
   // ---------- Helpers ----------
@@ -68,6 +73,7 @@
   const ic = (d, size = 22, sw = 2) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
   const I = {
     menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
+    home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
     back: '<path d="M15 4l-8 8 8 8"/>',
     left: '<path d="M15 5l-7 7 7 7"/>',
@@ -973,9 +979,7 @@
   }
 
   // ---------- Admin ----------
-  function viewAdmin() {
-    const tab = ui.adminTab;
-    const t = (k, label) => `<button class="${tab === k ? 'on' : ''}" data-admin="${k}">${label}</button>`;
+  function adminBody(tab) {
     let body = '';
     if (tab === 'live') {
       const live = db.staff.filter((s) => openEntry(s.id));
@@ -1018,6 +1022,12 @@
         <div class="grid-2"><button class="btn btn-ghost" data-action="export-all">${ic(I.download, 18)}Timesheets</button><button class="btn btn-ghost" data-action="export-register">${ic(I.download, 18)}Visitors</button>
         <button class="btn btn-ghost" data-action="backup">${ic(I.download, 18)}Backup</button><button class="btn btn-ghost" data-action="restore">${ic(I.log, 18)}Restore</button></div>`;
     }
+    return body;
+  }
+  function viewAdmin() {
+    const tab = ui.adminTab;
+    const t = (k, label) => `<button class="${tab === k ? 'on' : ''}" data-admin="${k}">${label}</button>`;
+    const body = adminBody(tab);
     return topbar('Admin Dashboard') + `<div class="page"><div class="pad">
       <div class="seg">${t('live', 'Live')}${t('staff', 'Staff')}${t('sites', 'Sites')}${t('roster', 'Roster')}${t('requests', 'Requests')}${t('reports', 'Reports')}</div>${body}</div></div>`;
   }
@@ -1080,9 +1090,9 @@
   function staffOptions(sel, allowOpen) {
     return (allowOpen ? `<option value="">— Open shift (offer to all) —</option>` : '') + db.staff.filter((s) => s.active).sort((a, b) => a.name.localeCompare(b.name)).map((s) => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
   }
-  function sheetShift(s) {
+  function sheetShift(s, preset = {}) {
     const isNew = !s;
-    s = s || { staffId: '', siteId: db.sites[0]?.id, date: ymd(addDays(startOfWeek(new Date()), ui.weekOffset * 7)), start: '07:00', end: '19:00', notes: '', status: 'confirmed' };
+    s = s || { staffId: preset.staffId || '', siteId: db.sites[0]?.id, date: preset.date || ymd(addDays(startOfWeek(new Date()), ui.weekOffset * 7)), start: '07:00', end: '19:00', notes: '', status: 'confirmed' };
     openSheet(`<h2>${isNew ? 'Add Shift' : 'Edit Shift'}</h2><form class="form">
       <div class="field"><label>Staff member</label><select class="input" name="staffId">${staffOptions(s.staffId, true)}</select></div>
       <div class="field"><label>Site</label><select class="input" name="siteId" required>${db.sites.map((x) => `<option value="${x.id}" ${x.id === s.siteId ? 'selected' : ''}>${esc(x.customer)} · ${esc(x.name)}</option>`).join('')}</select></div>
@@ -1289,7 +1299,9 @@
   async function cloudInit() {
     try {
       const createClient = window.VWG_TEST_SUPABASE || (await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm')).createClient;
-      cloud.sb = createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+      const auth = { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true };
+      if (HQ) auth.storageKey = 'vwg-hq-auth';
+      cloud.sb = createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, { auth });
     } catch (e) {
       toast('Offline — showing the last saved copy');
       return;
@@ -1381,7 +1393,7 @@
     if (cloud.channel) return;
     cloud.channel = cloud.sb.channel('vwg-records')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'records' }, onRemoteChange)
-      .subscribe();
+      .subscribe((status) => { const was = cloud.status; cloud.status = status; if (HQ && was !== status) requestRender(); });
   }
 
   function onRemoteChange(p) {
@@ -1399,6 +1411,7 @@
       synced[row.id] = JSON.stringify(row.data);
     }
     persistSynced(); localSave();
+    if (HQ && c === 'welfare') hqCheckAlerts();
     if (c === 'staff' && !me()?.active) { cloudSignOut('Your account has been deactivated.'); return; }
     requestRender();
   }
@@ -1424,10 +1437,10 @@
     }
     let u = db.staff.find((s) => s.email.toLowerCase() === email.toLowerCase());
     if (!u && !db.staff.length) u = await cloudBootstrap(email);
-    if (!u || !u.active) {
+    if (!u || !u.active || (HQ && !u.isAdmin)) {
       await cloud.sb.auth.signOut();
       db.session = null; localSave();
-      return "This email isn't set up as a staff member yet. Ask your manager to add you.";
+      return u?.active ? HQ_ONLY : "This email isn't set up as a staff member yet. Ask your manager to add you.";
     }
     db.session = u.id; localSave();
     cloudSubscribe();
@@ -1512,9 +1525,226 @@
   }
 
   // ---------- Render ----------
-  const VIEWS = { home: viewHome, shifts: viewShifts, offered: viewOffered, shift: viewShift, occurrence: viewOccurrence, leave: viewLeave, forms: viewForms, docs: viewDocs, doc: viewDoc, messages: viewMessages, thread: viewThread, register: viewRegister, welfare: viewWelfare, support: viewSupport, profile: viewProfile, training: viewTraining, module: viewModule, mydocs: viewMyDocs, compliance: viewCompliance, companycompliance: viewCompanyCompliance, timesheet: viewTimesheet, admin: viewAdmin };
+  // ---------- HQ desktop console (hq.html) ----------
+  // Managers only. Uses the same data as the phones, and updates live in shared mode.
+  const HQ_NAV = [
+    ['Monitor', [['hq', 'Live Overview', I.home], ['hq-requests', 'Requests', I.log], ['occurrence', 'Occurrence Log', I.clock], ['register', 'Sign On Register', I.qr]]],
+    ['Operations', [['hq-roster', 'Roster', I.cal], ['hq-staff', 'Staff', I.user], ['hq-sites', 'Sites', I.shield], ['forms', 'Incident / Forms', I.log]]],
+    ['Team', [['messages', 'Team Message', I.chat], ['docs', 'Document Library', I.log], ['training', 'Training', I.heart]]],
+    ['Reports', [['hq-reports', 'Hours & Exports', I.download]]],
+  ];
+  // Detail pages light up their parent in the sidebar.
+  const HQ_PARENT = { doc: 'docs', module: 'training', thread: 'messages' };
+  const HQ_ROUTES = ['hq', 'hq-requests', 'hq-roster', 'hq-staff', 'hq-sites', 'hq-reports', 'occurrence', 'register', 'forms', 'messages', 'thread', 'docs', 'doc', 'training', 'module'];
+  const hq = { alertsOn: false, seenHelp: null, refreshAt: 0 };
+  const LATE_GRACE_MIN = 5;
+  const shiftStart = (s) => { const d = parseYmd(s.date); const [h, m] = s.start.split(':').map(Number); d.setHours(h, m, 0, 0); return d; };
+  const shiftEnd = (s) => new Date(shiftStart(s).getTime() + shiftMinutes(s) * 60000);
+  const clockedInFor = (s) => db.entries.some((e) => e.staffId === s.staffId && (e.shiftId === s.id || (!e.clockOut && !e.shiftId) || ymd(new Date(e.clockIn)) === s.date));
+  const helpAlerts = () => db.welfare.filter((w) => w.status === 'help' && !w.ack && Date.now() - new Date(w.time).getTime() < 86400000).sort((a, b) => b.time.localeCompare(a.time));
+  const pendingCount = () => db.leave.filter((l) => l.status === 'pending').length + db.shifts.filter((s) => s.status === 'pending' && s.staffId).length + db.resetRequests.filter((r) => !r.done).length + db.incidents.filter((i) => i.status === 'open').length;
+
+  function hqToday() {
+    const now = new Date(); const today = ymd(now);
+    const rostered = db.shifts.filter((s) => s.date === today && s.staffId && s.status !== 'cancelled').sort(byStart);
+    const live = db.entries.filter((e) => !e.clockOut).sort((a, b) => a.clockIn.localeCompare(b.clockIn));
+    const notIn = rostered.filter((s) => !openEntry(s.staffId) && !clockedInFor(s) && shiftEnd(s) > now);
+    const late = notIn.filter((s) => now - shiftStart(s) > LATE_GRACE_MIN * 60000);
+    const due = notIn.filter((s) => !late.includes(s));
+    const overdue = live.filter((e) => welfareDue(e.staffId));
+    return { now, today, rostered, live, late, due, overdue };
+  }
+
+  function hqNav() {
+    const active = HQ_PARENT[ui.route] || ui.route;
+    const badge = { hq: helpAlerts().length, 'hq-requests': pendingCount() };
+    return HQ_NAV.map(([group, items]) => `<div class="hq-group">${group}</div>${items.map(([r, label, icon]) => `<button class="hq-link ${active === r ? 'on' : ''}" data-nav="${r}">${ic(icon, 18)}<span>${label}</span>${badge[r] ? `<em class="${r === 'hq' ? 'alert' : ''}">${badge[r]}</em>` : ''}</button>`).join('')}`).join('');
+  }
+
+  function hqShell(content) {
+    const u = me();
+    const title = { hq: 'Live Overview', 'hq-requests': 'Requests', 'hq-roster': 'Roster', 'hq-staff': 'Staff', 'hq-sites': 'Sites', 'hq-reports': 'Hours & Exports' }[ui.route];
+    const sync = !CLOUD ? ['demo', 'Demo data on this computer'] : !navigator.onLine ? ['off', 'Offline: showing the last saved copy'] : cloud.status === 'SUBSCRIBED' ? ['on', 'Live'] : ['wait', 'Connecting…'];
+    return `<div class="hq">
+      <aside class="hq-side">
+        <div class="hq-brand">${logoImg(150)}<span>HQ Console</span></div>
+        <nav class="hq-nav">${hqNav()}</nav>
+        <div class="hq-me"><div class="avatar" style="background:${u.color}">${u.photo ? `<img src="${u.photo}" alt="">` : initials(u.name)}</div><div><b>${esc(u.name)}</b><span>${esc(u.role)}</span></div></div>
+        <div class="hq-side-foot"><a href="index.html" target="_blank" rel="noopener">Open staff app</a><button data-action="logout">Sign out</button></div>
+      </aside>
+      <main class="hq-main">
+        <header class="hq-top">
+          <h1>${title ? esc(title) : ''}</h1>
+          <div class="hq-top-right">
+            <span class="hq-sync ${sync[0]}" title="${sync[1]}"><i></i>${sync[1]}</span>
+            <span class="hq-clock"><b id="live-time">${fmtTime(new Date())}</b> ${dmy(new Date())}</span>
+            <button class="btn btn-ghost btn-sm" data-action="hq-alerts" title="Desktop pop-up and sound when someone asks for help">${hq.alertsOn ? '🔔 Alerts on' : '🔕 Turn on alerts'}</button>
+            <button class="btn btn-ghost btn-sm" data-action="refresh">${ic(I.refresh, 16, 2.4)}Refresh</button>
+          </div>
+        </header>
+        <div class="hq-content ${title ? '' : 'hq-mobile'}">${content}</div>
+      </main>
+    </div>`;
+  }
+
+  const hqTable = (head, rows, empty) => rows.length
+    ? `<div class="hq-table-wrap"><table class="hq-table"><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`
+    : `<div class="empty">${empty}</div>`;
+  const who = (s) => s ? `<div class="hq-who">${avatar(s)}<div><b>${esc(s.name)}</b><span>${esc(s.empNo)} · ${esc(s.role)}</span></div></div>` : '<span class="muted">Unknown</span>';
+  const telLink = (s) => s?.phone ? `<a class="link" href="tel:${esc(s.phone)}">${esc(s.phone)}</a>` : '<span class="muted">—</span>';
+  const mapLink = (g) => g ? `<a class="link" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${g.lat},${g.lng}">Map</a>` : '';
+
+  function viewHq() {
+    const t = hqToday(); const help = helpAlerts();
+    const kpi = (n, label, tone = '', nav = '') => `<${nav ? `button data-nav="${nav}"` : 'div'} class="hq-kpi ${n && tone ? tone : ''}"><b>${n}</b><span>${label}</span></${nav ? 'button' : 'div'}>`;
+    const alerts = help.map((w) => { const s = staffById(w.staffId); const e = openEntry(w.staffId); const site = siteById(e?.siteId); return `<div class="hq-alert" role="alert"><span class="hq-alert-icon">!</span><div><b>${esc(s?.name || 'Unknown')} needs help</b><span>${fmtStamp(w.time)}${site ? ' · ' + esc(site.name) : ''} · ${telLink(s)} ${mapLink(w.geo)}</span></div><button class="btn btn-sm" data-action="hq-ack" data-id="${w.id}">Acknowledge</button></div>`; }).join('');
+
+    const liveRows = t.live.map((e) => {
+      const s = staffById(e.staffId); const site = siteById(e.siteId); const lw = lastWelfare(e.staffId);
+      const state = onBreak(e) ? '<span class="status st-pending">On break</span>' : welfareDue(e.staffId) ? '<span class="status st-high">⚠ Welfare overdue</span>' : '<span class="status st-on-site">✓ On site</span>';
+      return `<tr><td>${who(s)}</td><td>${esc(site?.name || '—')}<span class="sub">${esc(site?.customer || '')}</span></td><td class="nw">${fmtTime(new Date(e.clockIn))}<span class="sub">${e.method !== 'app' ? e.method.toUpperCase() : 'App'} ${mapLink(e.geo)}</span></td><td class="num">${fmtDur(entryWorkedMs(e))}</td><td>${lw ? fmtTime(new Date(lw.time)) : '<span class="muted">None yet</span>'}</td><td>${state}</td><td>${telLink(s)}</td></tr>`;
+    });
+    const missRows = [...t.late, ...t.due].map((s) => {
+      const p = staffById(s.staffId); const site = siteById(s.siteId); const mins = Math.round((t.now - shiftStart(s)) / 60000);
+      return `<tr><td>${who(p)}</td><td class="nw">${s.start} - ${s.end}</td><td>${esc(site?.name || '—')}</td><td>${mins > LATE_GRACE_MIN ? `<span class="status st-high">⚠ Late ${fmtDur(mins * 60000)}</span>` : `<span class="status st-low">Starts ${s.start}</span>`}</td><td>${telLink(p)}</td></tr>`;
+    });
+    const sites = db.sites.map((site) => {
+      const on = t.live.filter((e) => e.siteId === site.id).length;
+      const need = t.rostered.filter((s) => s.siteId === site.id && shiftStart(s) <= t.now && shiftEnd(s) > t.now).length;
+      const visitors = db.register.filter((r) => r.siteId === site.id && !r.outAt).length;
+      const incidents = db.incidents.filter((i) => i.siteId === site.id && i.status === 'open').length;
+      const short = on < need;
+      return `<div class="hq-site ${short ? 'short' : ''}"><div class="hq-site-head"><b>${esc(site.name)}</b>${short ? '<span class="status st-high">⚠ Short</span>' : on ? '<span class="status st-on-site">✓ Covered</span>' : '<span class="status st-low">Closed</span>'}</div>
+        <span class="sub">${esc(site.customer)} · ${esc(site.city)}</span>
+        <dl><div><dt>On site</dt><dd>${on}${need ? ` / ${need}` : ''}</dd></div><div><dt>Visitors</dt><dd>${visitors}</dd></div><div><dt>Open incidents</dt><dd>${incidents}</dd></div></dl></div>`;
+    }).join('');
+    const feed = db.occurrences.slice().sort((a, b) => b.time.localeCompare(a.time)).slice(0, 14).map((o) => { const s = staffById(o.staffId); const site = siteById(o.siteId); return `<li class="k-${o.kind}"><time>${fmtTime(new Date(o.time))}<span>${dmy(new Date(o.time)).slice(0, 5)}</span></time><div><b>${esc(o.text)}</b><span>${esc(s?.name || '')}${site ? ' · ' + esc(site.name) : ''}</span></div></li>`; }).join('');
+
+    return `${alerts ? `<div class="hq-alerts">${alerts}</div>` : ''}
+      <div class="hq-kpis">
+        ${kpi(t.live.length, 'On shift now')}
+        ${kpi(t.rostered.length, 'Rostered today')}
+        ${kpi(t.late.length, 'Late / not clocked in', 'bad')}
+        ${kpi(t.overdue.length, 'Welfare overdue', 'warn')}
+        ${kpi(help.length, 'Help alerts', 'bad')}
+        ${kpi(pendingCount(), 'Requests to review', 'warn', 'hq-requests')}
+      </div>
+      <div class="hq-grid">
+        <section class="hq-panel span-2"><div class="hq-panel-head"><h2>On shift now</h2><span class="muted small">Welfare check every ${CONFIG.welfareMinutes} min</span></div>
+          ${hqTable(['Staff', 'Site', 'Clocked in', 'Worked', 'Last welfare', 'Status', 'Phone'], liveRows, 'Nobody is clocked in right now.')}</section>
+        <section class="hq-panel"><div class="hq-panel-head"><h2>Activity</h2><button class="link small" data-nav="occurrence">Full log</button></div>
+          ${feed ? `<ul class="hq-feed">${feed}</ul>` : '<div class="empty">No activity yet.</div>'}</section>
+        <section class="hq-panel span-2"><div class="hq-panel-head"><h2>Not clocked in yet</h2><span class="muted small">Late after ${LATE_GRACE_MIN} min</span></div>
+          ${hqTable(['Staff', 'Shift', 'Site', 'Status', 'Phone'], missRows, 'Everyone rostered so far is accounted for.')}</section>
+        <section class="hq-panel"><div class="hq-panel-head"><h2>Sites now</h2><button class="link small" data-nav="hq-sites">Manage</button></div>
+          ${sites ? `<div class="hq-sites">${sites}</div>` : '<div class="empty">No sites yet.</div>'}</section>
+        <section class="hq-panel span-3"><div class="hq-panel-head"><h2>Hours worked, last 14 days</h2><button class="link small" data-nav="hq-reports">Reports</button></div>${hqHoursChart(14)}</section>
+      </div>`;
+  }
+
+  // One series (hours per day): a single gold bar colour, no legend; hover shows the value.
+  function hqHoursChart(n) {
+    const end = addDays(new Date(new Date().setHours(0, 0, 0, 0)), 1);
+    const days = Array.from({ length: n }, (_, i) => addDays(end, i - n));
+    const vals = days.map((d) => hours(db.entries.filter((e) => { const c = new Date(e.clockIn); return c >= d && c < addDays(d, 1); }).reduce((t, e) => t + entryWorkedMs(e), 0)));
+    const max = Math.max(8, ...vals); const step = max > 80 ? 20 : max > 40 ? 10 : max > 16 ? 5 : 2; const top = Math.ceil(max / step) * step;
+    const W = 960, H = 240, L = 40, R = 8, T = 12, B = 34; const pw = W - L - R, ph = H - T - B; const bw = pw / n;
+    const y = (v) => T + ph - (v / top) * ph;
+    let grid = ''; for (let v = 0; v <= top; v += step) grid += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="${v ? 'g' : 'base'}"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${v}h</text>`;
+    const bars = vals.map((v, i) => {
+      const x = L + i * bw + 1; const w = Math.max(2, bw - 2); const h = Math.max(0, (v / top) * ph); const r = Math.min(4, h, w / 2);
+      const path = h ? `M${x},${T + ph} V${T + ph - h + r} Q${x},${T + ph - h} ${x + r},${T + ph - h} H${x + w - r} Q${x + w},${T + ph - h} ${x + w},${T + ph - h + r} V${T + ph} Z` : '';
+      const d = days[i]; const tip = `${DAYS[d.getDay()].slice(0, 3)} ${dmy(d)}: ${fmtDur(v * 3600000)}`;
+      return `<g class="bar" data-tip="${tip}"><rect class="hit" x="${L + i * bw}" y="${T}" width="${bw}" height="${ph}"/>${path ? `<path d="${path}"/>` : ''}<text x="${L + i * bw + bw / 2}" y="${H - 14}" text-anchor="middle">${pad(d.getDate())}/${pad(d.getMonth() + 1)}</text></g>`;
+    }).join('');
+    const total = vals.reduce((a, b) => a + b, 0);
+    return `<div class="hq-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Hours worked per day for the last ${n} days, ${fmtDur(total * 3600000)} in total">${grid}${bars}</svg><div class="hq-tip" hidden></div></div>
+      <details class="hq-chart-table"><summary>Show as table · total ${fmtDur(total * 3600000)}</summary>${hqTable(['Day', 'Hours'], days.map((d, i) => `<tr><td>${DAYS[d.getDay()]} ${dmy(d)}</td><td class="num">${fmtDur(vals[i] * 3600000)}</td></tr>`).reverse(), '')}</details>`;
+  }
+
+  function viewHqRoster() {
+    const [from] = weekRange(); const days = Array.from({ length: 7 }, (_, i) => ymd(addDays(from, i))); const today = ymd(new Date());
+    const people = db.staff.filter((s) => s.active || db.shifts.some((x) => x.staffId === s.id && days.includes(x.date))).sort((a, b) => a.name.localeCompare(b.name));
+    const chip = (s) => { const site = siteById(s.siteId); return `<button class="hq-chip st-${slug(s.status)}" data-action="shift-edit" data-id="${s.id}" title="${esc(site?.customer || '')} · ${esc(site?.name || '')}"><b>${s.start}-${s.end}</b><span>${esc(site?.name || '')}</span></button>`; };
+    const cell = (list, d, staffId) => `<td class="${d === today ? 'today' : ''}">${list.sort(byStart).map(chip).join('')}<button class="hq-add" data-action="shift-new" data-date="${d}" data-staff="${staffId}" aria-label="Add shift">+</button></td>`;
+    const row = (label, staffId, filter) => `<tr><th>${label}</th>${days.map((d) => cell(db.shifts.filter((x) => x.date === d && filter(x)), d, staffId)).join('')}<td class="num">${fmtDur(db.shifts.filter((x) => days.includes(x.date) && filter(x) && x.status !== 'cancelled').reduce((t, x) => t + shiftMinutes(x) * 60000, 0))}</td></tr>`;
+    return `<div class="hq-toolbar">${weekNav()}<div class="hq-legend"><span class="status st-confirmed">Confirmed</span><span class="status st-pending">Awaiting OK</span><span class="status st-offered">Open / offered</span><span class="status st-cancelled">Cancelled</span></div><button class="btn btn-gold btn-sm" data-action="shift-new">${ic(I.plus, 16)}Add Shift</button></div>
+      <section class="hq-panel"><div class="hq-table-wrap"><table class="hq-table hq-roster"><thead><tr><th>Staff</th>${days.map((d) => { const x = parseYmd(d); return `<th class="${d === today ? 'today' : ''}">${DAYS[x.getDay()].slice(0, 3)} ${pad(x.getDate())}/${pad(x.getMonth() + 1)}</th>`; }).join('')}<th>Hours</th></tr></thead>
+      <tbody>${row('<span class="muted">Open shifts</span>', '', (x) => !x.staffId)}${people.map((p) => row(who(p), p.id, (x) => x.staffId === p.id)).join('')}</tbody></table></div></section>`;
+  }
+
+  function viewHqStaff() {
+    const from = startOfWeek(new Date()); const to = addDays(from, 7); const mods = db.training.filter((t) => t.q).length;
+    const rows = db.staff.slice().sort((a, b) => (b.active - a.active) || a.name.localeCompare(b.name)).map((s) => {
+      const e = openEntry(s.id); const issues = s.isAdmin ? 0 : complianceIssues(s); const done = db.training.filter((t) => t.q && db.trainingDone.some((x) => x.moduleId === t.id && x.staffId === s.id)).length;
+      return `<tr class="${s.active ? '' : 'inactive'}"><td>${who(s)}</td><td>${esc(s.dept || '')}${s.isAdmin ? '<span class="sub">Admin</span>' : ''}</td><td>${telLink(s)}<span class="sub">${esc(s.email)}</span></td>
+        <td>${!s.active ? '<span class="status st-low">Inactive</span>' : e ? `<span class="status st-on-site">✓ On shift</span><span class="sub">${esc(siteById(e.siteId)?.name || '')}</span>` : '<span class="muted">Off</span>'}</td>
+        <td class="num">${fmtDur(workedBetween(s.id, from, to))}</td><td>${s.isAdmin ? '<span class="muted">—</span>' : issues ? `<span class="status st-expired">⚠ ${issues} issue${issues > 1 ? 's' : ''}</span>` : '<span class="status st-valid">✓ OK</span>'}</td>
+        <td>${mods ? `${done} / ${mods}` : '—'}</td><td><button class="btn btn-ghost btn-sm" data-action="staff-edit" data-id="${s.id}">Edit</button>${CLOUD ? ` <button class="btn btn-ghost btn-sm" data-action="send-reset" data-id="${s.id}" title="Email a password reset link">Reset password</button>` : ''}</td></tr>`;
+    });
+    return `<div class="hq-toolbar"><div class="muted">${db.staff.filter((s) => s.active).length} active staff</div><button class="btn btn-gold btn-sm" data-action="staff-new">${ic(I.plus, 16)}Add Staff Member</button></div>
+      <section class="hq-panel">${hqTable(['Staff', 'Department', 'Contact', 'Now', 'Hours this week', 'Compliance', 'Training', ''], rows, 'No staff yet.')}</section>`;
+  }
+
+  const viewHqSites = () => `<div class="hq-narrow">${adminBody('sites')}</div>`;
+  const viewHqRequests = () => `<div class="hq-columns">${adminBody('requests')}</div>`;
+  const viewHqReports = () => `<section class="hq-panel"><div class="hq-panel-head"><h2>Hours worked, last 28 days</h2></div>${hqHoursChart(28)}</section><div class="hq-narrow">${adminBody('reports')}</div>`;
+
+  function hqTooltips() {
+    document.querySelectorAll('.hq-chart').forEach((box) => {
+      const tip = box.querySelector('.hq-tip');
+      box.addEventListener('mousemove', (ev) => {
+        const g = ev.target.closest('.bar'); box.querySelectorAll('.bar.on').forEach((x) => x !== g && x.classList.remove('on'));
+        if (!g) { tip.hidden = true; return; }
+        g.classList.add('on'); tip.textContent = g.dataset.tip; tip.hidden = false;
+        const r = box.getBoundingClientRect(); tip.style.left = Math.min(r.width - tip.offsetWidth - 4, Math.max(4, ev.clientX - r.left - tip.offsetWidth / 2)) + 'px'; tip.style.top = Math.max(0, ev.clientY - r.top - 44) + 'px';
+      });
+      box.addEventListener('mouseleave', () => { tip.hidden = true; box.querySelectorAll('.bar.on').forEach((x) => x.classList.remove('on')); });
+    });
+  }
+
+  // Desktop pop-up + beep when a new help request arrives while HQ is open.
+  function hqCheckAlerts() {
+    const ids = helpAlerts().map((w) => w.id);
+    if (hq.seenHelp === null) { hq.seenHelp = new Set(ids); return; }
+    const fresh = ids.filter((id) => !hq.seenHelp.has(id)); ids.forEach((id) => hq.seenHelp.add(id));
+    if (!fresh.length || !hq.alertsOn) return;
+    fresh.forEach((id) => { const w = db.welfare.find((x) => x.id === id); const s = staffById(w?.staffId); try { new Notification('HELP requested', { body: `${s?.name || 'A staff member'} pressed I NEED HELP at ${fmtTime(new Date(w.time))}`, icon: 'icon-192.png', requireInteraction: true }); } catch (e) { /* not allowed */ } });
+    try { const ac = new AudioContext(); [0, 0.35, 0.7].forEach((t) => { const o = ac.createOscillator(); const g = ac.createGain(); o.frequency.value = 880; g.gain.value = 0.2; o.connect(g); g.connect(ac.destination); o.start(ac.currentTime + t); o.stop(ac.currentTime + t + 0.2); }); } catch (e) { /* no audio */ }
+  }
+
+  function viewHqLogin() {
+    return `<div class="hq-login backdrop-art"><form class="hq-login-card" id="login-form" autocomplete="on">
+      ${logoImg(220)}<h1>HQ Console</h1><p>Live monitoring for ${esc(CONFIG.company)} managers</p>
+      <label class="pill-input">${ic(I.mail, 20)}<input id="email" type="email" placeholder="Email Address" autocomplete="username" required></label>
+      <label class="pill-input">${ic(I.lock, 20)}<input id="password" type="${ui.showPw ? 'text' : 'password'}" placeholder="Password" autocomplete="current-password" required><button type="button" class="eye" data-action="toggle-pw" aria-label="Show password">${ic(ui.showPw ? I.eyeOff : I.eye, 20)}</button></label>
+      <div class="error" id="login-error"></div>
+      <button class="btn-pill" type="submit">Sign In</button>
+      <button type="button" class="forgot" data-action="forgot">Forgot Password</button>
+      ${CLOUD ? '' : '<div class="demo-hint">Demo: <b>jack@${CONFIG.domain}</b> / <b>Password1</b></div>'}
+      <a class="hq-login-alt" href="index.html">Staff member? Open the staff app</a>
+    </form></div>`;
+  }
+
+  function renderHQ() {
+    const app = $('#app'); const u = me();
+    document.body.classList.add('hq-body');
+    if (u && u.active && !u.isAdmin) { if (CLOUD) { cloudSignOut(HQ_ONLY); return; } db.session = null; save(); }
+    if (!u || !u.active || !u.isAdmin) { db.session = null; app.innerHTML = viewHqLogin(); bindLogin(); document.title = 'VWG HQ Console'; return; }
+    if (!HQ_ROUTES.includes(ui.route)) ui.route = 'hq';
+    const y = window.scrollY;
+    app.innerHTML = hqShell((VIEWS[ui.route] || viewHq)());
+    window.scrollTo(0, y); // live refreshes keep your place; go() scrolls new pages to the top
+    bindPage(); hqTooltips(); hqCheckAlerts();
+    const n = helpAlerts().length; document.title = `${n ? `(${n}) HELP · ` : ''}VWG HQ Console`;
+    hq.refreshAt = Date.now() + 30000;
+    ticker = setInterval(tick, 1000);
+  }
+
+  const VIEWS = { hq: viewHq, 'hq-roster': viewHqRoster, 'hq-staff': viewHqStaff, 'hq-sites': viewHqSites, 'hq-requests': viewHqRequests, 'hq-reports': viewHqReports, home: viewHome, shifts: viewShifts, offered: viewOffered, shift: viewShift, occurrence: viewOccurrence, leave: viewLeave, forms: viewForms, docs: viewDocs, doc: viewDoc, messages: viewMessages, thread: viewThread, register: viewRegister, welfare: viewWelfare, support: viewSupport, profile: viewProfile, training: viewTraining, module: viewModule, mydocs: viewMyDocs, compliance: viewCompliance, companycompliance: viewCompanyCompliance, timesheet: viewTimesheet, admin: viewAdmin };
   function render() {
     clearInterval(ticker);
+    if (HQ) { renderHQ(); return; }
     const app = $('#app');
     if (!db.onboarded) { app.innerHTML = viewOnboarding(); bindSwipe(); return; }
     const u = me();
@@ -1527,6 +1757,8 @@
   function tick() {
     if (CLOUD && cloud.renderWanted && !$('#sheet-root').children.length && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) { cloud.renderWanted = false; render(); return; }
     const t = $('#live-time'); if (t) t.textContent = fmtTime(new Date());
+    // HQ: refresh worked times, late lists and welfare timers every 30 seconds.
+    if (HQ && Date.now() > hq.refreshAt && !$('#sheet-root').children.length && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) && !document.querySelector('.hq-chart:hover, details[open]')) { render(); return; }
     const e = openEntry(db.session); if (!e) return;
     for (const id of ['elapsed', 'drawer-elapsed']) { const el = document.getElementById(id); if (el) el.textContent = fmtClock(entryWorkedMs(e)); }
   }
@@ -1545,6 +1777,7 @@
       }
       const u = db.staff.find((s) => s.email.toLowerCase() === email);
       if (!u || !u.active || await hashPassword(pw, u.salt) !== u.pwHash) { $('#login-error').textContent = 'Incorrect email address or password'; return; }
+      if (HQ && !u.isAdmin) { $('#login-error').textContent = HQ_ONLY; return; }
       db.session = u.id; save(); ui.showPw = false; go(CONFIG.startPage, {}, false); toast(`Welcome, ${u.name.split(' ')[0]}`);
     });
   }
@@ -1738,7 +1971,14 @@
       case 'staff-delete': if (confirm('Delete this staff member? Their future shifts become open shifts; history is kept.')) { db.staff = db.staff.filter((s) => s.id !== id); db.shifts.forEach((s) => { if (s.staffId === id) { s.staffId = null; s.status = 'offered'; } }); save(); closeSheet(); render(); toast('Staff member deleted'); } break;
       case 'site-new': sheetSite(null); break;
       case 'site-edit': sheetSite(siteById(id)); break;
-      case 'shift-new': sheetShift(null); break;
+      case 'shift-new': sheetShift(null, { date: btn.dataset.date, staffId: btn.dataset.staff }); break;
+      case 'hq-ack': { const w = db.welfare.find((x) => x.id === id); if (w) { w.ack = { by: db.session, time: new Date().toISOString() }; addOccurrence(`Help alert for ${staffById(w.staffId)?.name || 'staff'} acknowledged by HQ`, 'welfare'); save(); render(); toast('Alert acknowledged'); } break; }
+      case 'hq-alerts':
+        if (hq.alertsOn) { hq.alertsOn = false; render(); break; }
+        if (!('Notification' in window)) { toast('This browser cannot show alerts'); break; }
+        if (await Notification.requestPermission() !== 'granted') { toast('Allow notifications for this site to get alerts'); break; }
+        hq.alertsOn = true; render(); toast('You will get a pop-up and sound when someone needs help');
+        break;
       case 'shift-edit': sheetShift(db.shifts.find((s) => s.id === id)); break;
       case 'shift-delete': db.shifts = db.shifts.filter((s) => s.id !== id); save(); closeSheet(); render(); toast('Shift deleted'); break;
       case 'shift-approve': case 'shift-decline': {
@@ -1765,6 +2005,7 @@
   (async function boot() {
     if (CONFIG.loginBackground) document.documentElement.style.setProperty('--bg-photo', `url('${CONFIG.loginBackground}')`);
     if (CLOUD) await cloudInit(); else await seed();
+    if (HQ) ['online', 'offline'].forEach((ev) => window.addEventListener(ev, () => requestRender()));
     render();
     if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
   })();
