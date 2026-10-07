@@ -57,6 +57,10 @@ language sql stable security definer set search_path = public as $$
   select count(*) from public.records where collection = 'staff'
 $$;
 
+-- Supabase lets anyone call public functions through its API; only signed-in staff need these.
+revoke execute on function public.email_confirmed(), public.my_staff_id(), public.is_admin(), public.staff_count() from public, anon;
+grant execute on function public.email_confirmed(), public.my_staff_id(), public.is_admin(), public.staff_count() to authenticated;
+
 -- ---------- Access rules ----------
 
 drop policy if exists records_select on public.records;
@@ -205,6 +209,9 @@ $$;
 drop trigger if exists vwg_allow_signup on auth.users;
 create trigger vwg_allow_signup before insert on auth.users
   for each row execute function public.allow_signup();
+
+-- Trigger functions only run as triggers; nobody needs to call them through the API.
+revoke execute on function public.records_guard(), public.allow_signup() from public, anon, authenticated;
 
 -- ---------- Live updates ----------
 

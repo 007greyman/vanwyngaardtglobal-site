@@ -17,7 +17,8 @@ window.VWG_CONFIG = {
   loginBackground: '',                // optional photo behind the sign-in screen, e.g. 'login-bg.jpg'
 
   // Shared database (Supabase). Leave both empty to run on this device only, with demo data.
-  // Supabase dashboard > Project Settings > API: copy "Project URL" and the "anon public" key.
-  supabaseUrl: '',
-  supabaseAnonKey: '',
+  // Supabase dashboard > Project Settings > API: the "Project URL" and a publishable (or legacy anon) key.
+  // Never put the service_role / secret key here.
+  supabaseUrl: 'https://surarxooallaxdmrndma.supabase.co',
+  supabaseAnonKey: 'sb_publishable_prAUY0c4axInxhEyLidx7g_QSepylfc', // publishable key: safe to be public
 };
