@@ -153,7 +153,12 @@
       d.training = [...defaultTraining(), ...d.training.filter((t) => !/^v\d$/.test(t.id))];
       d.trainingDone = d.trainingDone.filter((x) => !/^v\d$/.test(x.moduleId));
     }
-    d.trainingVersion = 2;
+    if (!CLOUD && (saved.trainingVersion || 1) < 3) {
+      // Built-in modules gained their walkthrough videos (shared mode gets them from the database).
+      const defaults = Object.fromEntries(defaultTraining().map((t) => [t.id, t.video]));
+      d.training.forEach((t) => { if (!t.video && defaults[t.id]) t.video = defaults[t.id]; });
+    }
+    d.trainingVersion = 3;
     d.documents.forEach((x) => { if (!x.scope) { x.scope = 'company'; x.refId = null; x.requireSign = true; } });
     d.messages.forEach((m) => { if (!m.thread) m.thread = 'all'; });
     [...d.docReads, ...d.trainingDone].forEach((x) => { if (!x.id) x.id = uid(); });
@@ -207,7 +212,7 @@
     db.shifts.push({ id: uid(), staffId: db.staff[0].id, siteId: db.sites[0].id, date: ymd(new Date()), start: '07:00', end: '19:00', notes: '', status: 'confirmed' });
     [2, 4, 9].forEach((d, k) => db.shifts.push({ id: uid(), staffId: null, siteId: db.sites[k % db.sites.length].id, date: ymd(addDays(monday, d)), start: k === 1 ? '19:00' : '07:00', end: k === 1 ? '07:00' : '19:00', notes: 'Cover needed', status: 'offered' }));
     const now = new Date().toISOString();
-    db.training = defaultTraining(); db.trainingVersion = 2;
+    db.training = defaultTraining(); db.trainingVersion = 3;
     const [ng, hr, ct] = db.sites;
     db.documents = [
       { id: uid(), title: 'Code of Conduct', scope: 'company', refId: null, requireSign: true, date: now, body: 'All staff must act with honesty, integrity and professionalism.\n\n1. Treat customers, visitors and colleagues with respect.\n2. Follow all lawful instructions from supervisors.\n3. Never consume alcohol or drugs before or during a shift.\n4. Keep all site information confidential.' },
@@ -909,10 +914,10 @@
     <path d="M6 18h52M6 46h52" stroke="#fff" stroke-width="3.5"/><path d="M13 13h6M24 13h6M35 13h6M46 13h6M13 51h6M24 51h6M35 51h6M46 51h6" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M26 24v16l13-8z" fill="none" stroke="#fff" stroke-width="3.5" stroke-linejoin="round"/></svg>`;
   function defaultTraining() {
     return [
-      { id: 'v1', title: 'Clock Out with Customer Approval', desc: 'This video will show you how to clock out using the customer approval feature', video: '', body: 'At the end of your shift tap CLOCK OUT. If the site needs sign-off, ask the customer\'s representative to type their name and sign in the box, then tap Clock Out. Their approval is saved with your hours and shown on your timesheet.', q: 'Who signs the customer approval box?', options: ['You', 'The customer\'s representative on site', 'Your manager at head office'], answer: 1 },
-      { id: 'v2', title: 'Submitting Leave & Unavailability', desc: 'A short video on how to submit for time off', video: '', body: 'Open Submit Leave and tap the first day you need off. Choose the leave type (or Unavailability if you just can\'t work that day) and the dates. A hollow blue circle means waiting for approval; a filled circle means approved.', q: 'What does a filled blue circle on the leave calendar mean?', options: ['Approved', 'Declined', 'Bank holiday'], answer: 0 },
-      { id: 'v3', title: 'Clocking into Shifts', desc: 'A short video on how to clock into your shift', video: '', body: 'Open the menu and tap CLOCK IN, or open today\'s shift under My Shifts and tap "Clock In to this Shift". At sites with a QR code or NFC tag, tap QR / NFC and scan it to clock in at that site. Your location is saved when you clock in, if you allow it.', q: 'How do you clock in at a site that has a QR code?', options: ['Email your manager', 'Tap QR / NFC and scan the code', 'Wait for the shift to start'], answer: 1 },
-      { id: 'v4', title: 'My Roster page', desc: `A short video on how to use the My Roster page of the ${CONFIG.shortName} app`, video: '', body: 'Open My Shifts and use the arrows to move between weeks. Tap a shift to open My Roster Detail: notes, Open in Maps and View Contacts. You can also offer a shift for cover.', q: 'How do you see site contacts for a shift?', options: ['Tap the shift, then View Contacts', 'Look in Training', 'You cannot'], answer: 0 },
+      { id: 'v1', title: 'Clock Out with Customer Approval', desc: 'This video will show you how to clock out using the customer approval feature', video: 'videos/clock-out-customer-approval.mp4', body: 'At the end of your shift tap CLOCK OUT. If the site needs sign-off, ask the customer\'s representative to type their name and sign in the box, then tap Clock Out. Their approval is saved with your hours and shown on your timesheet.', q: 'Who signs the customer approval box?', options: ['You', 'The customer\'s representative on site', 'Your manager at head office'], answer: 1 },
+      { id: 'v2', title: 'Submitting Leave & Unavailability', desc: 'A short video on how to submit for time off', video: 'videos/submitting-leave-unavailability.mp4', body: 'Open Submit Leave and tap the first day you need off. Choose the leave type (or Unavailability if you just can\'t work that day) and the dates. A hollow blue circle means waiting for approval; a filled circle means approved.', q: 'What does a filled blue circle on the leave calendar mean?', options: ['Approved', 'Declined', 'Bank holiday'], answer: 0 },
+      { id: 'v3', title: 'Clocking into Shifts', desc: 'A short video on how to clock into your shift', video: 'videos/clocking-into-shifts.mp4', body: 'Open the menu and tap CLOCK IN, or open today\'s shift under My Shifts and tap "Clock In to this Shift". At sites with a QR code or NFC tag, tap QR / NFC and scan it to clock in at that site. Your location is saved when you clock in, if you allow it.', q: 'How do you clock in at a site that has a QR code?', options: ['Email your manager', 'Tap QR / NFC and scan the code', 'Wait for the shift to start'], answer: 1 },
+      { id: 'v4', title: 'My Roster page', desc: `A short video on how to use the My Roster page of the ${CONFIG.shortName} app`, video: 'videos/my-roster-page.mp4', body: 'Open My Shifts and use the arrows to move between weeks. Tap a shift to open My Roster Detail: notes, Open in Maps and View Contacts. You can also offer a shift for cover.', q: 'How do you see site contacts for a shift?', options: ['Tap the shift, then View Contacts', 'Look in Training', 'You cannot'], answer: 0 },
     ];
   }
   function viewTraining() {
@@ -928,7 +933,7 @@
     if (yt) return `<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/${yt[1]}" title="Training video" allow="accelerometer; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>`;
     const vm = url.match(/vimeo\.com\/(\d+)/);
     if (vm) return `<div class="video"><iframe src="https://player.vimeo.com/video/${vm[1]}" title="Training video" allow="fullscreen; picture-in-picture" allowfullscreen></iframe></div>`;
-    return `<div class="video"><video src="${esc(url)}" controls playsinline></video></div>`;
+    return `<div class="video"><video src="${esc(url)}${url.includes('#') ? '' : '#t=0.8'}" controls playsinline preload="metadata"></video></div>`;
   }
   function viewModule() {
     const t = db.training.find((x) => x.id === ui.params.id);

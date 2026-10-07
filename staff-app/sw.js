@@ -1,6 +1,6 @@
 // Offline cache for the app shell. Only the app's own files and the Supabase
 // library are cached; database requests always go to the network.
-const CACHE = 'vwg-staff-v5';
+const CACHE = 'vwg-staff-v6';
 const ASSETS = ['./', './index.html', './styles.css', './config.js', './app.js', './icon.svg', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
@@ -23,7 +23,8 @@ self.addEventListener('fetch', (e) => {
   e.respondWith(
     fetch(e.request)
       .then((res) => {
-        if (res.ok) {
+        // Only full responses: videos stream as partial (206) responses, which can't be cached.
+        if (res.status === 200) {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(e.request, copy));
         }
