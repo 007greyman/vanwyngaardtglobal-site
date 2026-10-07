@@ -1,0 +1,14 @@
+{
+  "name": "Van Wyngaardt Global Staff",
+  "short_name": "VWG Staff",
+  "description": "Staff login, shifts and clock in / out for Van Wyngaardt Global.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#16263f",
+  "theme_color": "#16263f",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
