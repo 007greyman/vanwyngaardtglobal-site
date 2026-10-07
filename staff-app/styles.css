@@ -665,3 +665,10 @@ body.hq-body .sheet { max-width: 560px; border-radius: 14px; max-height: 90vh; }
   .hq-content { padding: 16px; }
   .hq-top { position: static; padding: 10px 16px; flex-wrap: wrap; }
 }
+
+/* Clock on/off location checks */
+.geo-flag { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.geo-flag.ok { color: var(--green); }
+.geo-flag.off { color: var(--red); }
+.geo-line .link { color: var(--blue); font-size: 12px; }
+.link { color: var(--blue); }

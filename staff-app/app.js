@@ -17,6 +17,7 @@
     supportEmail: '',
     emergencyPhone: '999',
     welfareMinutes: 60,
+    siteRadiusMetres: 200,
     region: 'UK',
     startPage: 'shifts',
     loginBackground: '',
@@ -185,11 +186,11 @@
       });
     }
     db.sites = [
-      { id: uid(), customer: 'Northgate Logistics', name: 'Northgate Distribution Centre', address: 'Unit 4 Northgate Way', city: 'Birmingham', region: 'England', country: 'UNITED KINGDOM', code: 'VWG-NG01',
+      { id: uid(), customer: 'Northgate Logistics', name: 'Northgate Distribution Centre', address: 'Unit 4 Northgate Way', city: 'Birmingham', region: 'England', country: 'UNITED KINGDOM', code: 'VWG-NG01', lat: 52.4862, lng: -1.8904,
         contacts: [{ name: 'Control Room', role: '24/7', phone: '0121 000 0001' }, { name: 'Mark Evans', role: 'Site Manager', phone: '0121 000 0002' }] },
-      { id: uid(), customer: 'Harbour Retail Park', name: 'Harbour Gatehouse', address: '1 Harbour Road', city: 'Manchester', region: 'England', country: 'UNITED KINGDOM', code: 'VWG-HR01',
+      { id: uid(), customer: 'Harbour Retail Park', name: 'Harbour Gatehouse', address: '1 Harbour Road', city: 'Manchester', region: 'England', country: 'UNITED KINGDOM', code: 'VWG-HR01', lat: 53.4808, lng: -2.2426,
         contacts: [{ name: 'Gatehouse', role: 'Front desk', phone: '0161 000 0001' }] },
-      { id: uid(), customer: 'Crestwood Estates', name: 'Crestwood Tower Reception', address: '22 Crest Street', city: 'London', region: 'England', country: 'UNITED KINGDOM', code: 'VWG-CT01',
+      { id: uid(), customer: 'Crestwood Estates', name: 'Crestwood Tower Reception', address: '22 Crest Street', city: 'London', region: 'England', country: 'UNITED KINGDOM', code: 'VWG-CT01', lat: 51.5074, lng: -0.1278,
         contacts: [{ name: 'Building Manager', role: 'Weekdays', phone: '020 0000 0001' }] },
     ];
     const monday = startOfWeek(new Date());
@@ -971,10 +972,14 @@
       ${list.length ? `<div class="card">${list.map((e) => entryRow(e)).join('')}</div>` : '<div class="empty">No clock-ins in this period.</div>'}
     </div></div>`;
   }
+  function entryGeoLine(e) {
+    const a = geoBadge(e); const b = e.clockOut ? geoBadge(e, true) : '';
+    return a || b ? `<div class="item-sub geo-line">${a ? `In: ${a}` : ''}${a && b ? ' &nbsp; ' : ''}${b ? `Out: ${b}` : ''}</div>` : '';
+  }
   function entryRow(e, who = false) {
     const cin = new Date(e.clockIn); const site = siteById(e.siteId); const s = who ? staffById(e.staffId) : null;
     return `<div class="item"><div class="item-main"><div class="item-title">${s ? esc(s.name) + ' · ' : ''}${DAYS[cin.getDay()].slice(0, 3)} ${dmy(cin)}</div>
-      <div class="item-sub">${fmtTime(cin)} - ${e.clockOut ? fmtTime(new Date(e.clockOut)) : 'now'}${site ? ' · ' + esc(site.name) : ''}${e.breaks.length ? ' · breaks ' + fmtDur(entryBreakMs(e)) : ''}${e.method !== 'app' ? ' · ' + e.method.toUpperCase() : ''}${e.geo ? ' · 📍' : ''}</div>${e.approval ? `<button class="small" style="color:var(--green);font-weight:600" data-action="view-approval" data-id="${e.id}">✓ Customer approved · ${esc(e.approval.name)}</button>` : ''}</div>
+      <div class="item-sub">${fmtTime(cin)} - ${e.clockOut ? fmtTime(new Date(e.clockOut)) : 'now'}${site ? ' · ' + esc(site.name) : ''}${e.breaks.length ? ' · breaks ' + fmtDur(entryBreakMs(e)) : ''}${e.method !== 'app' ? ' · ' + e.method.toUpperCase() : ''}${who ? '' : e.geo ? ' · 📍' : ''}</div>${who ? entryGeoLine(e) : ''}${e.approval ? `<button class="small" style="color:var(--green);font-weight:600" data-action="view-approval" data-id="${e.id}">✓ Customer approved · ${esc(e.approval.name)}</button>` : ''}</div>
       <div class="item-end">${e.clockOut ? fmtDur(entryWorkedMs(e)) : statusPill('on site')}</div></div>`;
   }
 
@@ -997,7 +1002,7 @@
         <div class="card">${db.staff.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => `<button class="item" data-action="staff-edit" data-id="${s.id}">${avatar(s)}<div class="item-main"><div class="item-title">${esc(s.name)}${s.active ? '' : ' <span class="small muted">(inactive)</span>'}</div><div class="item-sub">${esc(s.empNo)} · ${esc(s.role)}${s.isAdmin ? ' · Admin' : ''}${!s.isAdmin && complianceIssues(s) ? ` · <b style="color:var(--red)">${complianceIssues(s)} compliance issue(s)</b>` : ''}</div></div><span class="chev">${ic(I.right, 20)}</span></button>`).join('')}</div>`;
     } else if (tab === 'sites') {
       body = `<button class="btn btn-gold btn-block" data-action="site-new" style="margin-bottom:12px">${ic(I.plus, 18)}Add Site</button>
-        <div class="card">${db.sites.map((s) => `<button class="item" data-action="site-edit" data-id="${s.id}"><div class="item-main"><div class="item-title">${esc(s.name)}</div><div class="item-sub">${esc(s.customer)} · ${esc(s.city)} · QR/NFC code <b>${esc(s.code)}</b></div></div><span class="chev">${ic(I.right, 20)}</span></button>`).join('') || '<div class="empty">No sites yet.</div>'}</div>`;
+        <div class="card">${db.sites.map((s) => `<button class="item" data-action="site-edit" data-id="${s.id}"><div class="item-main"><div class="item-title">${esc(s.name)}</div><div class="item-sub">${esc(s.customer)} · ${esc(s.city)} · QR/NFC code <b>${esc(s.code)}</b> · ${s.lat != null ? `within ${s.radius || CONFIG.siteRadiusMetres} m of map position` : '<b style="color:var(--amber)">no map position: add one to check clock-on locations</b>'}</div></div><span class="chev">${ic(I.right, 20)}</span></button>`).join('') || '<div class="empty">No sites yet.</div>'}</div>`;
     } else if (tab === 'roster') {
       const [from] = weekRange();
       const days = Array.from({ length: 7 }, (_, i) => ymd(addDays(from, i)));
@@ -1120,11 +1125,21 @@
       <div class="field"><label>Address</label><input class="input" name="address" value="${esc(s.address)}"></div>
       <div class="row"><div class="field"><label>City</label><input class="input" name="city" value="${esc(s.city)}"></div><div class="field"><label>State / County</label><input class="input" name="region" value="${esc(s.region)}"></div></div>
       <div class="row"><div class="field"><label>Country</label><input class="input" name="country" value="${esc(s.country)}"></div><div class="field"><label>QR / NFC code</label><input class="input" name="code" value="${esc(s.code)}" required></div></div>
+      <div class="field"><label>Map position (latitude, longitude)</label><input class="input" name="pos" id="site-pos" value="${s.lat != null ? `${s.lat}, ${s.lng}` : ''}" placeholder="e.g. 52.48620, -1.89040" autocomplete="off">
+        <span class="small muted">In Google Maps, right-click the site and click the numbers to copy them. Or stand on site and <button type="button" class="link" data-action="site-here" style="color:var(--gold);font-weight:600">use my location</button>.</span></div>
+      <div class="field"><label>Allowed distance for clocking on/off (metres)</label><input class="input" type="number" name="radius" min="50" max="5000" step="10" value="${s.radius || CONFIG.siteRadiusMetres}"></div>
       <div class="field"><label>Contacts (one per line: Name | Role | Phone)</label><textarea class="input" name="contacts">${esc(contacts)}</textarea></div>
       <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Save Site</button></form>`, (d) => {
       const code = d.code.trim().toUpperCase();
       if (db.sites.some((x) => x.code.toUpperCase() === code && x.id !== s.id)) return 'Another site already uses that code';
-      const data = { customer: d.customer.trim(), name: d.name.trim(), address: d.address.trim(), city: d.city.trim(), region: d.region.trim(), country: d.country.trim(), code,
+      let lat = null, lng = null;
+      if (d.pos.trim()) {
+        const m = d.pos.match(/(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)/);
+        if (!m || Math.abs(+m[1]) > 90 || Math.abs(+m[2]) > 180) return 'Map position should look like 52.48620, -1.89040';
+        lat = +(+m[1]).toFixed(5); lng = +(+m[2]).toFixed(5);
+      }
+      const radius = Math.round(Number(d.radius)) || CONFIG.siteRadiusMetres;
+      const data = { customer: d.customer.trim(), name: d.name.trim(), address: d.address.trim(), city: d.city.trim(), region: d.region.trim(), country: d.country.trim(), code, lat, lng, radius,
         contacts: d.contacts.split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((p) => p[0]).map(([name, role = '', phone = '']) => ({ name, role, phone })) };
       if (isNew) db.sites.push({ id: uid(), ...data }); else Object.assign(siteById(s.id), data);
       save(); render(); toast('Site saved');
@@ -1181,12 +1196,38 @@
   }
 
   // ---------- Clock ----------
-  function getGeo() {
+  // maxAge: how old a remembered position may be. Clock on/off ask for a fresh one.
+  function getGeo(maxAge = 60000) {
     return new Promise((resolve) => {
       if (!navigator.geolocation) return resolve(null);
-      navigator.geolocation.getCurrentPosition((p) => resolve({ lat: +p.coords.latitude.toFixed(5), lng: +p.coords.longitude.toFixed(5), acc: Math.round(p.coords.accuracy) }), () => resolve(null), { timeout: 6000, maximumAge: 60000 });
+      navigator.geolocation.getCurrentPosition((p) => resolve({ lat: +p.coords.latitude.toFixed(5), lng: +p.coords.longitude.toFixed(5), acc: Math.round(p.coords.accuracy) }), () => resolve(null), { timeout: 8000, maximumAge: maxAge, enableHighAccuracy: maxAge === 0 });
     });
   }
+  // Where a clock on/off happened compared with the site: 'ok', 'off' (too far away),
+  // 'none' (location not shared), 'nosite' (site has no map position) or '' (not known yet).
+  function distanceM(a, b) {
+    const R = 6371000, rad = Math.PI / 180;
+    const x = Math.sin((b.lat - a.lat) * rad / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin((b.lng - a.lng) * rad / 2) ** 2;
+    return Math.round(2 * R * Math.asin(Math.sqrt(x)));
+  }
+  const fmtDist = (m) => m >= 1000 ? `${(m / 1000).toFixed(m >= 10000 ? 0 : 1)} km` : `${m} m`;
+  function geoCheck(e, out = false) {
+    const g = out ? e.geoOut : e.geo; const site = siteById(e.siteId);
+    if (!g) return { state: (out ? e.noGeoOut : e.noGeo) ? 'none' : '' };
+    if (!site || site.lat == null || site.lng == null) return { state: 'nosite', g };
+    const dist = distanceM(g, site); const radius = site.radius || CONFIG.siteRadiusMetres;
+    // Give the benefit of the doubt for the phone's stated accuracy (capped, so a vague fix can't hide a long way off).
+    return { state: dist - Math.min(g.acc || 0, 150) > radius ? 'off' : 'ok', g, dist };
+  }
+  function geoBadge(e, out = false) {
+    const c = geoCheck(e, out); const map = c.g ? ` <a class="link" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${c.g.lat},${c.g.lng}">Map</a>` : '';
+    if (c.state === 'off') return `<span class="geo-flag off">⚠ Off site · ${fmtDist(c.dist)} away</span>${map}`;
+    if (c.state === 'none') return '<span class="geo-flag off">⚠ No location</span>';
+    if (c.state === 'ok') return `<span class="geo-flag ok">✓ On site</span>${map}`;
+    if (c.state === 'nosite') return `<span class="geo-flag">📍 Located</span>${map}`;
+    return '';
+  }
+  const geoIssue = (e) => ['off', 'none'].includes(geoCheck(e).state) || (e.clockOut && ['off', 'none'].includes(geoCheck(e, true).state));
   async function clockIn({ shiftId = null, siteId = null, method = 'app' } = {}) {
     const u = me(); if (openEntry(u.id)) return;
     const today = ymd(new Date());
@@ -1196,12 +1237,17 @@
     db.entries.push(entry);
     addOccurrence(`Clocked in${method !== 'app' ? ' via ' + method.toUpperCase() : ''}`, 'clock', entry.siteId);
     save(); ui.drawer = false; render(); toast(`Clocked in at ${fmtTime(new Date())}`);
-    const geo = await getGeo(); if (geo) { entry.geo = geo; save(); }
+    const geo = await getGeo(0);
+    if (!openEntry(u.id) || entry.clockOut) return;
+    if (geo) entry.geo = geo; else { entry.noGeo = true; toast('Location not shared: turn on location for this app'); }
+    save();
   }
-  function clockOut(approval = null) {
+  function clockOut(approval = null, geo = null) {
     const e = openEntry(db.session); if (!e) return;
     const now = new Date().toISOString();
     e.breaks.forEach((b) => { if (!b.end) b.end = now; });
+    // Saved in the same change as the clock-out time: a finished record can't be edited by staff afterwards.
+    if (geo) e.geoOut = geo; else e.noGeoOut = true;
     e.clockOut = now;
     if (approval) e.approval = { ...approval, time: now };
     addOccurrence(`Clocked out · ${fmtDur(entryWorkedMs(e))} worked${approval ? ` · approved by ${approval.name}` : ''}`, 'clock', e.siteId);
@@ -1211,6 +1257,7 @@
     const e = openEntry(db.session); if (!e) return;
     const site = siteById(e.siteId);
     let signed = false;
+    const geoP = getGeo(0); // start now, while the customer signs
     const root = openSheet(`<h2>Clock Out</h2>
       <p style="margin-top:0">Worked <b>${fmtDur(entryWorkedMs(e))}</b> since ${fmtTime(new Date(e.clockIn))}${site ? ` at ${esc(site.name)}` : ''}.</p>
       <form class="form">
@@ -1221,11 +1268,13 @@
         <div class="error"></div>
         <button class="btn btn-red btn-block" type="submit">Clock Out</button>
         <button class="btn btn-ghost btn-block" type="button" data-dismiss>Cancel</button>
-      </form>`, (d) => {
+      </form>`, async (d) => {
       const name = d.name.trim();
       if (signed && !name) return 'Enter the customer\'s name, or clear the signature';
       if (name && !signed) return 'Ask the customer to sign, or clear their name';
-      clockOut(name ? { name, signature: canvas.toDataURL('image/png') } : null);
+      const btn = root.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Getting location…';
+      const geo = await geoP;
+      clockOut(name ? { name, signature: canvas.toDataURL('image/png') } : null, geo);
     });
     const canvas = root.querySelector('#sig'); const ctx = canvas.getContext('2d');
     const ratio = window.devicePixelRatio || 1;
@@ -1252,11 +1301,12 @@
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
   const toCsv = (rows) => rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  const GEO_LABEL = { ok: 'On site', off: 'OFF SITE', none: 'No location', nosite: 'Site has no map position', '': '' };
   function timesheetCsv(entries) {
-    const rows = [['Employee no', 'Name', 'Date', 'Site', 'Clock in', 'Clock out', 'Break (min)', 'Worked (h)', 'Method', 'Customer approval', 'Latitude', 'Longitude']];
+    const rows = [['Employee no', 'Name', 'Date', 'Site', 'Clock in', 'Clock out', 'Break (min)', 'Worked (h)', 'Method', 'Customer approval', 'In latitude', 'In longitude', 'In distance from site (m)', 'In location check', 'Out latitude', 'Out longitude', 'Out distance from site (m)', 'Out location check']];
     entries.slice().sort((a, b) => a.clockIn.localeCompare(b.clockIn)).forEach((e) => {
       const s = staffById(e.staffId) || {}; const cin = new Date(e.clockIn);
-      rows.push([s.empNo, s.name, dmy(cin), siteById(e.siteId)?.name, fmtTime(cin), e.clockOut ? fmtTime(new Date(e.clockOut)) : '', Math.round(entryBreakMs(e) / 60000), hours(entryWorkedMs(e)).toFixed(2), e.method, e.approval ? `${e.approval.name} (${fmtStamp(e.approval.time)})` : '', e.geo?.lat, e.geo?.lng]);
+      rows.push([s.empNo, s.name, dmy(cin), siteById(e.siteId)?.name, fmtTime(cin), e.clockOut ? fmtTime(new Date(e.clockOut)) : '', Math.round(entryBreakMs(e) / 60000), hours(entryWorkedMs(e)).toFixed(2), e.method, e.approval ? `${e.approval.name} (${fmtStamp(e.approval.time)})` : '', ...[false, true].flatMap((out) => { const c = geoCheck(e, out); const g = c.g; return out && !e.clockOut ? ['', '', '', ''] : [g?.lat, g?.lng, c.dist ?? '', GEO_LABEL[c.state]]; })]);
     });
     return toCsv(rows);
   }
@@ -1602,7 +1652,7 @@
     const liveRows = t.live.map((e) => {
       const s = staffById(e.staffId); const site = siteById(e.siteId); const lw = lastWelfare(e.staffId);
       const state = onBreak(e) ? '<span class="status st-pending">On break</span>' : welfareDue(e.staffId) ? '<span class="status st-high">⚠ Welfare overdue</span>' : '<span class="status st-on-site">✓ On site</span>';
-      return `<tr><td>${who(s)}</td><td>${esc(site?.name || '—')}<span class="sub">${esc(site?.customer || '')}</span></td><td class="nw">${fmtTime(new Date(e.clockIn))}<span class="sub">${e.method !== 'app' ? e.method.toUpperCase() : 'App'} ${mapLink(e.geo)}</span></td><td class="num">${fmtDur(entryWorkedMs(e))}</td><td>${lw ? fmtTime(new Date(lw.time)) : '<span class="muted">None yet</span>'}</td><td>${state}</td><td>${telLink(s)}</td></tr>`;
+      return `<tr><td>${who(s)}</td><td>${esc(site?.name || '—')}<span class="sub">${esc(site?.customer || '')}</span></td><td class="nw">${fmtTime(new Date(e.clockIn))}<span class="sub">${e.method !== 'app' ? e.method.toUpperCase() : 'App'}</span></td><td class="nw">${geoBadge(e) || '<span class="muted small">Waiting…</span>'}</td><td class="num">${fmtDur(entryWorkedMs(e))}</td><td>${lw ? fmtTime(new Date(lw.time)) : '<span class="muted">None yet</span>'}</td><td>${state}</td><td>${telLink(s)}</td></tr>`;
     });
     const missRows = [...t.late, ...t.due].map((s) => {
       const p = staffById(s.staffId); const site = siteById(s.siteId); const mins = Math.round((t.now - shiftStart(s)) / 60000);
@@ -1618,6 +1668,12 @@
         <span class="sub">${esc(site.customer)} · ${esc(site.city)}</span>
         <dl><div><dt>On site</dt><dd>${on}${need ? ` / ${need}` : ''}</dd></div><div><dt>Visitors</dt><dd>${visitors}</dd></div><div><dt>Open incidents</dt><dd>${incidents}</dd></div></dl></div>`;
     }).join('');
+    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+    const geoRows = db.entries.filter((e) => e.clockIn >= weekAgo && geoIssue(e)).sort((a, b) => b.clockIn.localeCompare(a.clockIn)).slice(0, 30).map((e) => {
+      const s = staffById(e.staffId); const site = siteById(e.siteId); const cin = new Date(e.clockIn); const bad = (out) => ['off', 'none'].includes(geoCheck(e, out).state);
+      return `<tr><td>${who(s)}</td><td class="nw">${DAYS[cin.getDay()].slice(0, 3)} ${dmy(cin)}</td><td>${esc(site?.name || '—')}</td><td>${fmtTime(cin)} ${bad(false) ? geoBadge(e) : '<span class="muted small">OK</span>'}</td><td>${e.clockOut ? `${fmtTime(new Date(e.clockOut))} ${bad(true) ? geoBadge(e, true) : '<span class="muted small">OK</span>'}` : '<span class="muted small">On shift</span>'}</td></tr>`;
+    });
+    const noPos = db.sites.filter((x) => x.lat == null).length;
     const feed = db.occurrences.slice().sort((a, b) => b.time.localeCompare(a.time)).slice(0, 14).map((o) => { const s = staffById(o.staffId); const site = siteById(o.siteId); return `<li class="k-${o.kind}"><time>${fmtTime(new Date(o.time))}<span>${dmy(new Date(o.time)).slice(0, 5)}</span></time><div><b>${esc(o.text)}</b><span>${esc(s?.name || '')}${site ? ' · ' + esc(site.name) : ''}</span></div></li>`; }).join('');
 
     return `${alerts ? `<div class="hq-alerts">${alerts}</div>` : ''}
@@ -1630,14 +1686,16 @@
         ${kpi(pendingCount(), 'Requests to review', 'warn', 'hq-requests')}
       </div>
       <div class="hq-grid">
-        <section class="hq-panel span-2"><div class="hq-panel-head"><h2>On shift now</h2><span class="muted small">Welfare check every ${CONFIG.welfareMinutes} min</span></div>
-          ${hqTable(['Staff', 'Site', 'Clocked in', 'Worked', 'Last welfare', 'Status', 'Phone'], liveRows, 'Nobody is clocked in right now.')}</section>
-        <section class="hq-panel"><div class="hq-panel-head"><h2>Activity</h2><button class="link small" data-nav="occurrence">Full log</button></div>
-          ${feed ? `<ul class="hq-feed">${feed}</ul>` : '<div class="empty">No activity yet.</div>'}</section>
+        <section class="hq-panel span-3"><div class="hq-panel-head"><h2>On shift now</h2><span class="muted small">Welfare check every ${CONFIG.welfareMinutes} min</span></div>
+          ${hqTable(['Staff', 'Site', 'Clocked in', 'Location', 'Worked', 'Last welfare', 'Status', 'Phone'], liveRows, 'Nobody is clocked in right now.')}</section>
         <section class="hq-panel span-2"><div class="hq-panel-head"><h2>Not clocked in yet</h2><span class="muted small">Late after ${LATE_GRACE_MIN} min</span></div>
           ${hqTable(['Staff', 'Shift', 'Site', 'Status', 'Phone'], missRows, 'Everyone rostered so far is accounted for.')}</section>
         <section class="hq-panel"><div class="hq-panel-head"><h2>Sites now</h2><button class="link small" data-nav="hq-sites">Manage</button></div>
           ${sites ? `<div class="hq-sites">${sites}</div>` : '<div class="empty">No sites yet.</div>'}</section>
+        <section class="hq-panel span-2"><div class="hq-panel-head"><h2>Location checks, last 7 days</h2><span class="muted small">Clock on/off away from the site or without location${noPos ? ` · <button class="link" data-nav="hq-sites" style="color:var(--amber);font-weight:600">${noPos} site${noPos > 1 ? 's have' : ' has'} no map position</button>` : ''}</span></div>
+          ${hqTable(['Staff', 'Day', 'Site', 'Clock on', 'Clock off'], geoRows, 'All clock-ons and clock-offs were on site.')}</section>
+        <section class="hq-panel"><div class="hq-panel-head"><h2>Activity</h2><button class="link small" data-nav="occurrence">Full log</button></div>
+          ${feed ? `<ul class="hq-feed">${feed}</ul>` : '<div class="empty">No activity yet.</div>'}</section>
         <section class="hq-panel span-3"><div class="hq-panel-head"><h2>Hours worked, last 14 days</h2><button class="link small" data-nav="hq-reports">Reports</button></div>${hqHoursChart(14)}</section>
       </div>`;
   }
@@ -1970,6 +2028,13 @@
       case 'staff-edit': sheetStaff(staffById(id)); break;
       case 'staff-delete': if (confirm('Delete this staff member? Their future shifts become open shifts; history is kept.')) { db.staff = db.staff.filter((s) => s.id !== id); db.shifts.forEach((s) => { if (s.staffId === id) { s.staffId = null; s.status = 'offered'; } }); save(); closeSheet(); render(); toast('Staff member deleted'); } break;
       case 'site-new': sheetSite(null); break;
+      case 'site-here': {
+        const inp = $('#site-pos'); btn.textContent = 'finding you…';
+        const g = await getGeo(); btn.textContent = 'use my location';
+        if (!g) { toast('Could not get your location'); break; }
+        inp.value = `${g.lat}, ${g.lng}`; toast(`Location set (accurate to ${g.acc} m)`);
+        break;
+      }
       case 'site-edit': sheetSite(siteById(id)); break;
       case 'shift-new': sheetShift(null, { date: btn.dataset.date, staffId: btn.dataset.staff }); break;
       case 'hq-ack': { const w = db.welfare.find((x) => x.id === id); if (w) { w.ack = { by: db.session, time: new Date().toISOString() }; addOccurrence(`Help alert for ${staffById(w.staffId)?.name || 'staff'} acknowledged by HQ`, 'welfare'); save(); render(); toast('Alert acknowledged'); } break; }
