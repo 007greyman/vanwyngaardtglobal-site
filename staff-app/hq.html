@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0d0d0d">
+  <meta name="robots" content="noindex">
+  <title>VWG HQ Console</title>
+  <meta name="description" content="Van Wyngaardt Global HQ console: live monitoring of staff on shift, alerts, roster and reports for managers.">
+  <link rel="manifest" href="hq.webmanifest">
+  <link rel="icon" href="favicon.png" type="image/png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="hq-body">
+  <div id="app" class="app"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="sheet-root"></div>
+  <script>window.VWG_HQ = true;</script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

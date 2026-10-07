@@ -41,6 +41,25 @@ The app runs in one of two modes:
 
 The app saves your GPS location when you clock in and when you do a welfare check, if you allow it.
 
+## HQ console (desktop, managers only)
+
+Open **`hq.html`** on a computer, for example
+https://007greyman.github.io/vanwyngaardtglobal-site/hq.html. Only staff marked as admin can sign in.
+It uses the same database and logins as the phones and updates live:
+
+- **Live Overview**: on shift now (site, clock-in, hours, last welfare check), late or not clocked in,
+  welfare overdue, red **help alerts** with Acknowledge, site cover, activity feed and an hours chart.
+- **Roster**: week grid of staff by day; click a shift to edit or **+** to add one.
+- **Staff**: contact, who's on shift, hours this week, compliance and training, password reset.
+- **Requests**, **Sites**, **Hours & Exports**, plus the occurrence log, sign-on register, forms,
+  messages, documents and training.
+- **Turn on alerts** gives a desktop pop-up and a sound when someone presses I NEED HELP.
+
+**Install it as a desktop app.** In Chrome or Edge, open `hq.html`, sign in, then click the install
+icon at the right of the address bar (or ⋮ menu → *Cast, save and share* → *Install page as app*).
+It then opens in its own window from the Start menu, Dock or desktop. The console keeps its own
+sign-in, so it never signs anyone out of the staff app in the same browser.
+
 ## Demo logins
 
 These work in demo mode only. The password for all demo accounts is `Password1`.
