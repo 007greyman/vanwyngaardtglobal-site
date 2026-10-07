@@ -1,6 +1,6 @@
 // Offline cache for the app shell. Only the app's own files and the Supabase
 // library are cached; database requests always go to the network.
-const CACHE = 'vwg-staff-v8';
+const CACHE = 'vwg-staff-v9';
 const ASSETS = ['./', './index.html', './hq.html', './styles.css', './config.js', './app.js', './logo.png', './icon-192.png', './apple-touch-icon.png', './favicon.png', './manifest.webmanifest', './hq.webmanifest'];
 
 self.addEventListener('install', (e) => {

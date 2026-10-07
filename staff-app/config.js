@@ -13,6 +13,7 @@ window.VWG_CONFIG = {
   emergencyPhone: '999',
 
   welfareMinutes: 60,                 // how often lone workers must do a welfare check
+  siteRadiusMetres: 200,              // clock on/off further than this from a site is flagged (each site can override)
   startPage: 'shifts',                // first screen after signing in
   loginBackground: '',                // optional photo behind the sign-in screen, e.g. 'login-bg.jpg'
 

@@ -60,6 +60,15 @@ icon at the right of the address bar (or ⋮ menu → *Cast, save and share* →
 It then opens in its own window from the Start menu, Dock or desktop. The console keeps its own
 sign-in, so it never signs anyone out of the staff app in the same browser.
 
+### Clock on/off locations
+
+Each clock on and clock off saves the phone's GPS position (staff must allow location for the app).
+Give each site a **map position** (Admin → Sites: paste the numbers from Google Maps, or press
+*use my location* while on site) and an **allowed distance** (default `siteRadiusMetres: 200` in
+`config.js`). Anything further away is flagged **⚠ Off site**, and a refused location is flagged
+**⚠ No location**. These show in the HQ console (Location column and *Location checks, last 7 days*),
+in the admin clock-in lists, and in the timesheet CSV export.
+
 ## Demo logins
 
 These work in demo mode only. The password for all demo accounts is `Password1`.
