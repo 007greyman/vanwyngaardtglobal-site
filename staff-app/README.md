@@ -10,7 +10,7 @@ The app runs in one of two modes:
 
 ## Screens
 
-**Sign in.** The gold ring logo sits on a black background. Staff sign in with their email address and password, and can show or hide the password. The screen also has **Forgot Password** (in shared mode: emails a reset link, or lets new staff create their password) and **Log In with Domain** (checks the company domain). Four intro slides show on first launch.
+**Sign in.** The Van Wyngaardt Global logo (`logo.png`) sits on a black background. Staff sign in with their email address and password, and can show or hide the password. The screen also has **Forgot Password** (in shared mode: emails a reset link, or lets new staff create their password) and **Log In with Domain** (checks the company domain). Four intro slides show on first launch.
 
 **Side menu** (opened with the ☰ button):
 - A profile photo with a camera button to change it.
@@ -62,7 +62,7 @@ All settings live in **`config.js`**, so you never need to edit `app.js`:
 - `loginBackground`: an optional team photo shown behind the sign-in screen and menu header. Put the image file (for example `login-bg.jpg`) in `staff-app/` and set its name here. It's tinted dark automatically.
 - `supabaseUrl` and `supabaseAnonKey`: the shared database (see below)
 
-Brand colours are CSS variables at the top of `styles.css`: black `#0d0d0d` (`--brand`) and gold `#b09244` (`--gold`).
+Brand colours are CSS variables at the top of `styles.css`: black `#0d0d0d` (`--brand`) and gold `#b48c40` (`--gold`, taken from the logo). The logo is `logo.png` (transparent background, for dark screens); the home-screen icons are `icon-192.png`, `icon-512.png`, `apple-touch-icon.png` and `favicon.png`.
 
 ## Going live
 

@@ -92,20 +92,9 @@
     trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   };
 
-  function logoSvg(size = 190) {
-    return `<svg class="logo-ring" style="width:${size}px;height:${size}px" viewBox="0 0 240 240" role="img" aria-label="${CONFIG.company}">
-      <defs>
-        <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e2cc8a"/><stop offset="0.5" stop-color="#b09244"/><stop offset="1" stop-color="#d9bf7a"/></linearGradient>
-        <mask id="band"><rect width="240" height="240" fill="#fff"/><rect x="0" y="100" width="240" height="40" fill="#000"/></mask>
-      </defs>
-      <g mask="url(#band)">
-        <circle cx="120" cy="120" r="100" fill="none" stroke="url(#lg)" stroke-width="16"/>
-        <path d="M58 62 A84 84 0 0 1 188 72" fill="none" stroke="url(#lg)" stroke-width="3"/>
-        <path d="M182 178 A84 84 0 0 1 52 168" fill="none" stroke="url(#lg)" stroke-width="3"/>
-      </g>
-      <text x="120" y="129" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="25" fill="url(#lg)" textLength="226" lengthAdjust="spacingAndGlyphs">VAN WYNGAARDT</text>
-      <text x="120" y="160" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="14" letter-spacing="6" fill="url(#lg)">GLOBAL</text>
-    </svg>`;
+  // The company logo (logo.png: transparent background, made for dark backgrounds).
+  function logoImg(size = 230) {
+    return `<img class="logo-img" src="logo.png" style="width:${size}px" alt="${esc(CONFIG.company)} Limited">`;
   }
 
   const DEFAULT_AVATAR = `<svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true">
@@ -354,7 +343,7 @@
     return `<div class="onboard backdrop-art">
       <div class="onboard-top"><button class="skip" data-action="finish-onboard">Skip</button></div>
       <div class="slides" id="slides"><div class="slides-track" style="transform:translateX(-${ui.slide * 100}%)">
-        ${SLIDES.map((s, i) => `<div class="slide">${i === 0 ? logoSvg(170) : `<div class="slide-art">${ic(s.icon, 76, 1.6)}</div>`}<h2 style="margin-top:${i === 0 ? 34 : 0}px">${s.title}</h2><p>${s.text}</p></div>`).join('')}
+        ${SLIDES.map((s, i) => `<div class="slide">${i === 0 ? logoImg(210) : `<div class="slide-art">${ic(s.icon, 76, 1.6)}</div>`}<h2 style="margin-top:${i === 0 ? 34 : 0}px">${s.title}</h2><p>${s.text}</p></div>`).join('')}
       </div></div>
       <div class="dots">${SLIDES.map((_, i) => `<span class="dot ${i === ui.slide ? 'on' : ''}"></span>`).join('')}</div>
       <button class="btn-pill" data-action="${last ? 'finish-onboard' : 'next-slide'}">${last ? 'Get Started' : 'Next'}</button>
@@ -363,7 +352,7 @@
 
   function viewLogin() {
     return `<div class="login backdrop-art">
-      ${logoSvg(190)}
+      ${logoImg(230)}
       <h1>Welcome to ${esc(CONFIG.company)}</h1>
       <p class="lead">Sign in below to get started</p>
       <form id="login-form" autocomplete="on">
