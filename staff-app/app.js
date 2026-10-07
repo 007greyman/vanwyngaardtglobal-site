@@ -25,7 +25,7 @@
   }, window.VWG_CONFIG || {}, { version: 'v1.2.0(3)' });
   const CLOUD = !!(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
   const STORE_KEY = CLOUD ? 'vwg-staff-cloud' : 'vwg-staff-v2';
-  const COLORS = ['#16263f', '#0b6e0b', '#b86e00', '#6b3fa0', '#b5461b', '#0e7490', '#a3195b', '#4d7c0f'];
+  const COLORS = ['#1a1a1a', '#0b6e0b', '#b86e00', '#6b3fa0', '#b5461b', '#0e7490', '#a3195b', '#4d7c0f'];
 
   // ---------- Helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -92,20 +92,9 @@
     trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   };
 
-  function logoSvg(size = 190) {
-    return `<svg class="logo-ring" style="width:${size}px;height:${size}px" viewBox="0 0 240 240" role="img" aria-label="${CONFIG.company}">
-      <defs>
-        <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e2cc8a"/><stop offset="0.5" stop-color="#b09244"/><stop offset="1" stop-color="#d9bf7a"/></linearGradient>
-        <mask id="band"><rect width="240" height="240" fill="#fff"/><rect x="0" y="100" width="240" height="40" fill="#000"/></mask>
-      </defs>
-      <g mask="url(#band)">
-        <circle cx="120" cy="120" r="100" fill="none" stroke="url(#lg)" stroke-width="16"/>
-        <path d="M58 62 A84 84 0 0 1 188 72" fill="none" stroke="url(#lg)" stroke-width="3"/>
-        <path d="M182 178 A84 84 0 0 1 52 168" fill="none" stroke="url(#lg)" stroke-width="3"/>
-      </g>
-      <text x="120" y="129" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="25" fill="url(#lg)" textLength="226" lengthAdjust="spacingAndGlyphs">VAN WYNGAARDT</text>
-      <text x="120" y="160" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="14" letter-spacing="6" fill="url(#lg)">GLOBAL</text>
-    </svg>`;
+  // The company logo (logo.png: transparent background, made for dark backgrounds).
+  function logoImg(size = 230) {
+    return `<img class="logo-img" src="logo.png" style="width:${size}px" alt="${esc(CONFIG.company)} Limited">`;
   }
 
   const DEFAULT_AVATAR = `<svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden="true">
@@ -354,7 +343,7 @@
     return `<div class="onboard backdrop-art">
       <div class="onboard-top"><button class="skip" data-action="finish-onboard">Skip</button></div>
       <div class="slides" id="slides"><div class="slides-track" style="transform:translateX(-${ui.slide * 100}%)">
-        ${SLIDES.map((s, i) => `<div class="slide">${i === 0 ? logoSvg(170) : `<div class="slide-art">${ic(s.icon, 76, 1.6)}</div>`}<h2 style="margin-top:${i === 0 ? 34 : 0}px">${s.title}</h2><p>${s.text}</p></div>`).join('')}
+        ${SLIDES.map((s, i) => `<div class="slide">${i === 0 ? logoImg(210) : `<div class="slide-art">${ic(s.icon, 76, 1.6)}</div>`}<h2 style="margin-top:${i === 0 ? 34 : 0}px">${s.title}</h2><p>${s.text}</p></div>`).join('')}
       </div></div>
       <div class="dots">${SLIDES.map((_, i) => `<span class="dot ${i === ui.slide ? 'on' : ''}"></span>`).join('')}</div>
       <button class="btn-pill" data-action="${last ? 'finish-onboard' : 'next-slide'}">${last ? 'Get Started' : 'Next'}</button>
@@ -363,7 +352,7 @@
 
   function viewLogin() {
     return `<div class="login backdrop-art">
-      ${logoSvg(190)}
+      ${logoImg(230)}
       <h1>Welcome to ${esc(CONFIG.company)}</h1>
       <p class="lead">Sign in below to get started</p>
       <form id="login-form" autocomplete="on">
@@ -693,7 +682,7 @@
     list = q ? list.filter((t) => t.name.toLowerCase().includes(q) || db.messages.some((m) => (m.thread || 'all') === t.id && m.text.toLowerCase().includes(q)))
       : list.filter((t) => t.count || t.kind !== 'dm');
     list.sort((a, b) => (b.last?.time || '').localeCompare(a.last?.time || ''));
-    const icon = (t) => t.kind === 'dm' ? avatar(t.staff) : `<div class="avatar" style="background:var(--navy);color:var(--gold-light)">${ic(t.kind === 'site' ? I.shield : I.chat, 20)}</div>`;
+    const icon = (t) => t.kind === 'dm' ? avatar(t.staff) : `<div class="avatar" style="background:var(--brand);color:var(--gold-light)">${ic(t.kind === 'site' ? I.shield : I.chat, 20)}</div>`;
     return topbar('Team Message', { right: refreshBtn }) + `<div class="page white">
       <div class="searchbar flush">${ic(I.search, 22)}<input id="msg-q" value="${esc(ui.msgQ)}" autocomplete="off" aria-label="Search people, sites or messages"></div>
       <div id="msg-list">${list.map((t) => `<button class="thread" data-nav="thread" data-id="${t.id}">${icon(t)}<div class="item-main"><div class="item-title">${esc(t.name)}</div>
@@ -746,7 +735,7 @@
       <div class="pad"><div class="card-head" style="margin:14px 4px 8px"><h3>Visitors</h3><button class="btn btn-gold btn-sm" data-action="visitor-new">${ic(I.plus, 16)}Sign In Visitor</button></div>
         ${visitors.length ? `<div class="card">${visitors.map((r) => `<div class="item"><div class="item-main"><div class="item-title">${esc(r.name)}${r.company ? ' · ' + esc(r.company) : ''}</div>
           <div class="item-sub">${esc(r.purpose || '')}${r.vehicle ? ' · 🚗 ' + esc(r.vehicle) : ''}</div><div class="item-sub">In ${fmtTime(new Date(r.inAt))}${r.outAt ? ' · Out ' + fmtTime(new Date(r.outAt)) : ''}</div></div>
-          ${r.outAt ? statusPill('signed out') : `<button class="btn btn-navy btn-sm" data-action="visitor-out" data-id="${r.id}">Sign Out</button>`}</div>`).join('')}</div>` : '<div class="empty">No visitors.</div>'}
+          ${r.outAt ? statusPill('signed out') : `<button class="btn btn-dark btn-sm" data-action="visitor-out" data-id="${r.id}">Sign Out</button>`}</div>`).join('')}</div>` : '<div class="empty">No visitors.</div>'}
       </div>
     </div>`;
   }
@@ -910,7 +899,7 @@
   }
 
   // ---------- Training ----------
-  const FILM_ICON = `<svg class="film" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" fill="#16263f"/><rect x="6" y="8" width="52" height="48" rx="5" fill="none" stroke="#fff" stroke-width="3.5"/>
+  const FILM_ICON = `<svg class="film" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" fill="#111111"/><rect x="6" y="8" width="52" height="48" rx="5" fill="none" stroke="#fff" stroke-width="3.5"/>
     <path d="M6 18h52M6 46h52" stroke="#fff" stroke-width="3.5"/><path d="M13 13h6M24 13h6M35 13h6M46 13h6M13 51h6M24 51h6M35 51h6M46 51h6" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M26 24v16l13-8z" fill="none" stroke="#fff" stroke-width="3.5" stroke-linejoin="round"/></svg>`;
   function defaultTraining() {
     return [
@@ -1016,7 +1005,7 @@
       const inc = db.incidents.slice().sort((a, b) => (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1) || b.time.localeCompare(a.time));
       const resets = db.resetRequests.filter((r) => !r.done);
       const chats = [...new Set(db.support.map((m) => m.staffId))].map((sid) => { const ms = db.support.filter((m) => m.staffId === sid).sort((a, b) => a.time.localeCompare(b.time)); return { sid, last: ms[ms.length - 1], waiting: !ms.some((m) => m.from === 'support' && m.authorId && m.time > (ms.filter((x) => x.from === 'staff').pop()?.time || '')) }; }).sort((a, b) => b.last.time.localeCompare(a.last.time));
-      body = `${chats.length ? `<div class="card"><h3>Support chats</h3>${chats.map((c) => `<div class="item"><div class="item-main"><div class="item-title">${esc(staffById(c.sid)?.name || 'Former staff')}</div><div class="item-sub">${esc(c.last.text || '📷 Photo').slice(0, 60)} · ${fmtStamp(c.last.time)}</div></div><button class="btn ${c.waiting ? 'btn-gold' : 'btn-ghost'} btn-sm" data-action="support-reply" data-id="${c.sid}">Reply</button></div>`).join('')}</div>` : ''}${resets.length ? `<div class="card"><h3>Password resets</h3>${resets.map((r) => `<div class="item"><div class="item-main"><div class="item-title">${esc(r.email)}</div><div class="item-sub">${fmtStamp(r.time)}</div></div><button class="btn btn-navy btn-sm" data-action="reset-do" data-id="${r.id}">Reset</button></div>`).join('')}</div>` : ''}
+      body = `${chats.length ? `<div class="card"><h3>Support chats</h3>${chats.map((c) => `<div class="item"><div class="item-main"><div class="item-title">${esc(staffById(c.sid)?.name || 'Former staff')}</div><div class="item-sub">${esc(c.last.text || '📷 Photo').slice(0, 60)} · ${fmtStamp(c.last.time)}</div></div><button class="btn ${c.waiting ? 'btn-gold' : 'btn-ghost'} btn-sm" data-action="support-reply" data-id="${c.sid}">Reply</button></div>`).join('')}</div>` : ''}${resets.length ? `<div class="card"><h3>Password resets</h3>${resets.map((r) => `<div class="item"><div class="item-main"><div class="item-title">${esc(r.email)}</div><div class="item-sub">${fmtStamp(r.time)}</div></div><button class="btn btn-dark btn-sm" data-action="reset-do" data-id="${r.id}">Reset</button></div>`).join('')}</div>` : ''}
         <div class="card"><h3>Shifts to confirm</h3>${accepted.length ? accepted.map((s) => `<div class="item"><div class="item-main"><div class="item-title">${esc(staffById(s.staffId)?.name)}</div><div class="item-sub">${dayTitle(s.date)} · ${s.start} - ${s.end} · ${esc(siteById(s.siteId)?.name || '')}</div></div>${approveBtns('shift', s.id)}</div>`).join('') : '<div class="empty">Nothing to confirm.</div>'}</div>
         <div class="card"><h3>Leave</h3>${leave.length ? leave.map((l) => leaveRow(l, true)).join('') : '<div class="empty">No leave requests.</div>'}</div>
         <div class="card"><h3>Incidents & forms</h3>${inc.length ? inc.map((i) => incidentRow(i, true)).join('') : '<div class="empty">No submissions.</div>'}</div>`;
@@ -1046,7 +1035,7 @@
     const hasNfc = 'NDEFReader' in window;
     const root = openSheet(`<h2>QR / NFC</h2>
       ${hasCam ? '<div class="scanner"><video id="scan-video" playsinline muted></video></div>' : '<p class="small muted">Camera scanning isn\'t supported in this browser. Type the site code printed under the QR code instead.</p>'}
-      ${hasNfc ? `<button type="button" class="btn btn-navy btn-block" id="nfc-btn" style="margin-bottom:12px">Tap an NFC tag</button>` : ''}
+      ${hasNfc ? `<button type="button" class="btn btn-dark btn-block" id="nfc-btn" style="margin-bottom:12px">Tap an NFC tag</button>` : ''}
       <form class="form"><div class="field"><label>Site code</label><input class="input" name="code" placeholder="e.g. VWG-NG01" autocapitalize="characters"></div>
       <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Submit Code</button></form>`, (d) => handleCode(d.code, 'qr'));
     if (hasCam) {
