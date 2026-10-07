@@ -7,9 +7,9 @@ window.VWG_CONFIG = {
   currency: '£',
 
   // Support screen and help texts
-  supportPhone: '+44 0000 000000',    // weekdays 9am–5pm
-  supportPhoneOoh: '+44 0000 000001', // evenings & weekends
-  supportEmail: 'support@vanwyngaardtglobal.com',
+  supportPhone: '+44 7487 707580',    // main support line
+  supportPhoneOoh: '',                // optional separate evenings & weekends line
+  supportEmail: 'info@vanwyngaardtglobal.com',
   emergencyPhone: '999',
 
   welfareMinutes: 60,                 // how often lone workers must do a welfare check

@@ -781,7 +781,9 @@
     const tel = (n) => `<a class="tel" href="tel:${n.replace(/\s/g, '')}">${esc(n)}</a>`;
     return `Hi there! 👋 Welcome to ${esc(CONFIG.shortName)} Support. I’m here to help with any questions or issues you may have—just let me know what you need help with.<br><br>
       Prefer to speak to someone? Our telephone support team is also available:<br><br>
-      📞 Weekdays, 9am–5pm: ${tel(CONFIG.supportPhone)}<br>📞 Evenings &amp; weekends: ${tel(CONFIG.supportPhoneOoh)}`;
+      ${CONFIG.supportPhoneOoh
+        ? `📞 Weekdays, 9am–5pm: ${tel(CONFIG.supportPhone)}<br>📞 Evenings &amp; weekends: ${tel(CONFIG.supportPhoneOoh)}`
+        : `📞 Call us: ${tel(CONFIG.supportPhone)}`}`;
   }
   function viewSupport() {
     const u = me(); const team = supportTeam();
