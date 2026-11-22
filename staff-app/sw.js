@@ -1,6 +1,6 @@
 // Offline cache for the app shell. Only the app's own files and the Supabase
 // library are cached; database requests always go to the network.
-const CACHE = 'vwg-staff-v18';
+const CACHE = 'vwg-staff-v19';
 const ASSETS = ['./', './index.html', './hq.html', './styles.css', './config.js', './app.js', './logo.png', './icon-192.png', './apple-touch-icon.png', './favicon.png', './manifest.webmanifest', './hq.webmanifest', './forms/VWG-CON-02-Contractor-NDA.pdf'];
 
 self.addEventListener('install', (e) => {
@@ -20,8 +20,11 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   const cacheable = url.origin === self.location.origin || url.hostname === 'cdn.jsdelivr.net';
   if (!cacheable) return;
+  // Always check the server for the app's own files (a cheap "not modified" when nothing changed),
+  // so a phone never keeps an old copy of the app; the offline cache is only the fallback.
+  const sameOrigin = url.origin === self.location.origin;
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, sameOrigin ? { cache: 'no-cache' } : undefined)
       .then((res) => {
         // Only full responses: videos stream as partial (206) responses, which can't be cached.
         if (res.status === 200) {
@@ -30,7 +33,7 @@ self.addEventListener('fetch', (e) => {
         }
         return res;
       })
-      .catch(() => caches.match(e.request))
+      .catch(() => caches.match(e.request, { ignoreSearch: true }))
   );
 });
 
