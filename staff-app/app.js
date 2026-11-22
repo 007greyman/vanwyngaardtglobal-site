@@ -336,6 +336,7 @@
         </div>
         <div class="menu">
           ${MENU.map(([r, label]) => `<button class="menu-item ${ui.route === r ? 'on' : ''}" data-nav="${r}"><span>${label}</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>`).join('')}
+          ${CLOUD && u.isAdmin ? `<button class="menu-item ${ui.route === 'briefs' ? 'on' : ''}" data-nav="briefs"><span>Intel Briefs</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
           ${u.isAdmin ? `<button class="menu-item ${ui.route === 'admin' ? 'on' : ''}" data-nav="admin"><span>Admin Dashboard</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
           <button class="menu-item danger" data-action="logout"><span>Sign Out</span></button>
         </div>
@@ -871,6 +872,33 @@
       ${on ? `<button class="btn btn-gold btn-block" data-action="push-test">Send a test alert</button>
               <button class="btn btn-block" style="margin-top:8px" data-action="push-off">Turn off on this device</button>`
            : `<button class="btn btn-gold btn-block" data-action="push-on">Turn on alerts on this device</button>`}`);
+  }
+
+  // ---------- Intel Briefs (managers) ----------
+  // Daily VWG Intel brief PDFs, uploaded by VWG Intel to the PRIVATE storage bucket 'briefs'
+  // (function vwg-brief). Listed from public.briefs; opened through a 10-minute signed link.
+  async function loadBriefs() {
+    const { data, error } = await cloud.sb.from('briefs').select('id,title,path,size,created_at').order('created_at', { ascending: false }).limit(60);
+    ui.briefs = error ? { error: error.message } : data;
+    if (ui.route === 'briefs') render();
+  }
+  function viewBriefs() {
+    if (!CLOUD || !me().isAdmin) return viewHome();
+    if (ui.briefs === undefined) { ui.briefs = null; loadBriefs(); }
+    const list = ui.briefs;
+    const body = list === null ? '<div class="empty">Loading…</div>'
+      : list.error ? `<div class="empty">Couldn't load briefs: ${esc(list.error)}</div>`
+      : !list.length ? '<div class="empty">No briefs yet. The next one arrives at 07:00.</div>'
+      : list.map((b, i) => `<button class="item" data-action="brief-open" data-id="${esc(b.path)}"><div class="item-main"><div class="item-title">${esc(b.title)}${i === 0 ? ' <span class="small" style="color:var(--gold, #c9a227)">· latest</span>' : ''}</div><div class="item-sub">${fmtStamp(b.created_at)} · ${Math.round((b.size || 0) / 1024)} KB · PDF</div></div><span class="chev">${ic(I.right, 20)}</span></button>`).join('');
+    return topbar('Intel Briefs', { right: '<button class="tb-btn" data-action="briefs-refresh">Refresh</button>' }) + `<div class="page white">
+      <div class="pad small muted">Daily VWG Intel briefs. Managers only. Kept for 30 days.</div>
+      <div class="card">${body}</div></div>`;
+  }
+  async function openBrief(path) {
+    const w = window.open('', '_blank'); // opened during the tap so the browser allows it
+    const { data, error } = await cloud.sb.storage.from('briefs').createSignedUrl(path, 600);
+    if (error || !data?.signedUrl) { if (w) w.close(); toast(error ? error.message : 'Could not open the brief'); return; }
+    if (w) w.location.href = data.signedUrl; else location.href = data.signedUrl;
   }
 
   // ---------- Profile ----------
@@ -1847,7 +1875,7 @@
     ticker = setInterval(tick, 1000);
   }
 
-  const VIEWS = { hq: viewHq, 'hq-roster': viewHqRoster, 'hq-staff': viewHqStaff, 'hq-sites': viewHqSites, 'hq-requests': viewHqRequests, 'hq-reports': viewHqReports, home: viewHome, shifts: viewShifts, offered: viewOffered, shift: viewShift, occurrence: viewOccurrence, leave: viewLeave, forms: viewForms, docs: viewDocs, doc: viewDoc, messages: viewMessages, thread: viewThread, register: viewRegister, welfare: viewWelfare, support: viewSupport, profile: viewProfile, training: viewTraining, module: viewModule, mydocs: viewMyDocs, compliance: viewCompliance, companycompliance: viewCompanyCompliance, timesheet: viewTimesheet, admin: viewAdmin };
+  const VIEWS = { hq: viewHq, 'hq-roster': viewHqRoster, 'hq-staff': viewHqStaff, 'hq-sites': viewHqSites, 'hq-requests': viewHqRequests, 'hq-reports': viewHqReports, home: viewHome, shifts: viewShifts, offered: viewOffered, shift: viewShift, occurrence: viewOccurrence, leave: viewLeave, forms: viewForms, docs: viewDocs, doc: viewDoc, messages: viewMessages, thread: viewThread, register: viewRegister, welfare: viewWelfare, support: viewSupport, profile: viewProfile, briefs: viewBriefs, training: viewTraining, module: viewModule, mydocs: viewMyDocs, compliance: viewCompliance, companycompliance: viewCompanyCompliance, timesheet: viewTimesheet, admin: viewAdmin };
   function render() {
     clearInterval(ticker);
     if (HQ) { renderHQ(); return; }
@@ -1856,6 +1884,8 @@
     const u = me();
     if (!u || !u.active) { db.session = null; app.innerHTML = viewLogin(); bindLogin(); return; }
     if (ui.route === 'admin' && !u.isAdmin) ui.route = 'home';
+    // Deep link from a "brief ready" phone alert: index.html?open=briefs
+    if (ui.openParam === undefined) { ui.openParam = new URLSearchParams(location.search).get('open') || ''; if (ui.openParam === 'briefs' && CLOUD && u.isAdmin) { ui.route = 'briefs'; ui.briefs = undefined; history.replaceState(null, '', location.pathname); } }
     app.innerHTML = (VIEWS[ui.route] || viewHome)() + (ui.drawer ? drawer() : '');
     bindPage();
     ticker = setInterval(tick, 1000);
@@ -2110,6 +2140,8 @@
         alert(`Temporary password for ${s.name}:\n\n${temp}\n\nGive this to them and ask them to change it under My Profile.`);
         break;
       }
+      case 'brief-open': openBrief(id).catch((e) => toast(e.message)); break;
+      case 'briefs-refresh': ui.briefs = null; render(); loadBriefs(); break;
       case 'push-setup': sheetPush().catch((e) => toast(e.message)); break;
       case 'push-on': try { btn.disabled = true; await pushOn(); toast('Alerts on. Sending a test…'); await pushTest(); closeSheet(); } catch (e) { toast(e.message); btn.disabled = false; } break;
       case 'push-test': try { const r = await pushTest(); toast(r && r.sent ? 'Test sent' : 'No device received it'); } catch (e) { toast(e.message); } break;
