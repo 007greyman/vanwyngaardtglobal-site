@@ -76,7 +76,9 @@ async function operatorsSync(body: any) {
     const [old] = await sql`select data from public.records where collection = 'staff' and id = ${id}`;
     if (old && old.data.isAdmin) continue; // never touch a manager's record from Aegis
     const fields = {
-      name, email, phone: str(o.phone, 40), role: "Close Protection Officer", dept: "Close Protection",
+      name, email, phone: str(o.phone, 40),
+      // keep a position a manager has set (e.g. "Protection Officer & Driver"); default for new people
+      role: old?.data?.role || "Close Protection Officer", dept: old?.data?.dept || "Close Protection",
       empNo: `OP-${aegisId}`, isAdmin: false, active: true, aegisId, jobOnly: o.jobOnly === true,
       licence: str(o.siaLicence, 40),
       compliance: {
