@@ -406,9 +406,9 @@
       <div class="pad">
         ${(() => { // clock-on prompt from 30 minutes before a rostered shift until it ends
           if (e) return '';
-          const soon = db.shifts.filter((x) => x.staffId === u.id && x.date === ymd(now) && !x.timesTbc && x.status !== 'cancelled')
+          const soon = db.shifts.filter((x) => x.staffId === u.id && x.date === ymd(now) && x.status !== 'cancelled')
             .find((x) => { const st = shiftStart(x); return now >= st - 30 * 60000 && now < shiftEnd(x); });
-          return soon ? `<div class="card clock-prompt"><b>${now >= shiftStart(soon) ? 'Your shift has started' : 'Your shift starts at ' + esc(soon.start)}</b>
+          return soon ? `<div class="card clock-prompt"><b>${now >= shiftStart(soon) ? 'Your shift has started' : (soon.timesTbc ? 'Your shift is planned for ' : 'Your shift starts at ') + esc(soon.start) + (soon.timesTbc ? ' (TBC)' : '')}</b>
             <div class="small">${esc(siteById(soon.siteId)?.customer || siteById(soon.siteId)?.name || '')} · clock on now</div>
             <button class="btn btn-red btn-block" style="margin-top:10px" data-action="clock-in" data-id="${soon.id}">CLOCK IN</button></div>` : '';
         })()}
@@ -431,7 +431,7 @@
 
   // ---------- Shifts ----------
   const ROLE_NAMES = { TL: 'Team leader', CPO: 'CPO', SDD: 'Driver', RST: 'Residence team', Medic: 'Medic', Ops: 'Operations' };
-  const shiftTimes = (s) => (s.timesTbc ? 'Times confirmed daily by the TL' : `${s.start} - ${s.end}`);
+  const shiftTimes = (s) => (s.timesTbc ? `${s.start} - ${s.end} (TBC) · times confirmed daily by the TL` : `${s.start} - ${s.end}`);
   function shiftCard(s) {
     const site = siteById(s.siteId) || {};
     return `<button class="shift-card" data-nav="shift" data-id="${s.id}">
@@ -1134,7 +1134,7 @@
     const prev = ymd(addDays(new Date(day + 'T12:00:00'), -1)), next = ymd(addDays(new Date(day + 'T12:00:00'), 1));
     return topbar('Run Sheet', { left: ui.stack.length ? 'back' : 'menu' }) + `<div class="page white">
       <div class="run-day"><button class="tb-btn" data-nav="runsheet" data-id="${prev}">${ic(I.left || I.back, 22)}</button>
-        <div><b>${dayTitle(day)}</b><div class="small muted">${shift ? (shift.timesTbc ? 'Times confirmed daily by the TL' : `On duty ${shift.start} – ${shift.end}`) : 'Not on duty this day'}</div></div>
+        <div><b>${dayTitle(day)}</b><div class="small muted">${shift ? (shift.timesTbc ? `Planned ${shift.start} – ${shift.end} (TBC) · the TL confirms daily` : `On duty ${shift.start} – ${shift.end}`) : 'Not on duty this day'}</div></div>
         <button class="tb-btn" data-nav="runsheet" data-id="${next}">${ic(I.right, 22)}</button></div>
       ${driver ? `<div class="pad" style="padding-top:6px"><button class="btn btn-block run-check" data-action="form-new" data-type="Vehicle Check">Before you drive: vehicle &amp; child-seat check</button></div>` : ''}
       <div class="small muted pad" style="padding-top:2px">Planned times. The TL confirms the day's timings; follow the TL if they change.</div>

@@ -1,8 +1,8 @@
 // vwg-reminders: "clock on" reminders. Called every 5 minutes by pg_cron (header x-cron-key, a
 // value kept only in private.push_config). For every rostered shift starting within the next 30
 // minutes (Jack: 30 min before) whose person is not clocked in, it sends one push alert to that person's devices.
-// Skips: shifts whose hours are "confirmed daily by the TL" (timesTbc) until the TL sets the
-// real time, people still in onboarding, inactive staff, and shifts already reminded.
+// "TBC" days (hours confirmed daily by the TL) are reminded on their planned time, worded as planned.
+// Skips people still in onboarding, inactive staff, and shifts already reminded.
 import webpush from "npm:web-push@3.6.7";
 import postgres from "npm:postgres@3.4.5";
 
@@ -27,6 +27,7 @@ Deno.serve(async (req) => {
 
   const due = await sql`
     select sh.id as shift_id, sh.data->>'staffId' as staff_id, sh.data->>'start' as start,
+           coalesce((sh.data->>'timesTbc')::boolean, false) as tbc,
            coalesce(si.data->>'customer', si.data->>'name', 'your shift') as job
       from public.records sh
       join public.records st on st.collection = 'staff' and st.id = sh.data->>'staffId'
@@ -34,7 +35,6 @@ Deno.serve(async (req) => {
      where sh.collection = 'shifts'
        and sh.data->>'staffId' is not null
        and coalesce(sh.data->>'status', 'confirmed') not in ('cancelled', 'offered')
-       and not coalesce((sh.data->>'timesTbc')::boolean, false)
        and coalesce((st.data->>'active')::boolean, true)
        and coalesce(st.data->'onboarding'->>'status', 'approved') = 'approved'
        and (case when sh.data->>'date' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' and sh.data->>'start' ~ '^[0-9]{2}:[0-9]{2}$'
@@ -52,7 +52,9 @@ Deno.serve(async (req) => {
     people++;
     const payload = JSON.stringify({
       title: `Clock on: ${d.job}`,
-      body: `Your shift starts at ${d.start}. Open the VWG Staff app and clock on.`,
+      body: d.tbc
+        ? `Your shift is planned for ${d.start} (TBC: the TL confirms the time). Clock on in the VWG Staff app when you start.`
+        : `Your shift starts at ${d.start}. Open the VWG Staff app and clock on.`,
       url: "./index.html", tag: `clock-${d.shift_id}`,
     });
     for (const s of subs) {
