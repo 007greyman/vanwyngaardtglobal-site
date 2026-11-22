@@ -336,6 +336,7 @@
         </div>
         <div class="menu">
           ${MENU.map(([r, label]) => `<button class="menu-item ${ui.route === r ? 'on' : ''}" data-nav="${r}"><span>${label}</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>`).join('')}
+          ${db.sites.some((x) => (x.movements || []).length) ? `<button class="menu-item ${ui.route === 'runsheet' ? 'on' : ''}" data-nav="runsheet"><span>Run Sheet</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
           ${CLOUD ? `<button class="menu-item ${ui.route === 'briefs' ? 'on' : ''}" data-nav="briefs"><span>Intel Briefs</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
           ${u.isAdmin ? `<button class="menu-item ${ui.route === 'admin' ? 'on' : ''}" data-nav="admin"><span>Admin Dashboard</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
           <button class="menu-item danger" data-action="logout"><span>Sign Out</span></button>
@@ -407,6 +408,7 @@
           <div class="stat"><b>${offered}</b><span>Offered shifts</span></div>
         </div>
         ${today ? `<div class="small muted" style="margin:4px 4px 6px">TODAY</div>${shiftCard(today)}` : ''}
+        ${legsFor(ymd(now)).length ? `<button class="card" data-nav="runsheet" style="width:100%;text-align:left;border-left:5px solid var(--gold)"><b>Today's run sheet</b><div class="small muted">${legsFor(ymd(now)).length} movement(s) · tap for navigation</div></button>` : ''}
         <div class="tiles" style="padding:0 0 12px">
           ${tile('shifts', I.cal, 'My Shifts')}${tile('occurrence', I.log, 'Occurrence Log')}${tile('forms', I.shield, 'Incident / Forms')}
           ${tile('messages', I.chat, 'Team Message')}${tile('welfare', I.heart, 'Welfare Check')}${tile('register', I.user, 'Sign On Register')}
@@ -417,12 +419,14 @@
   }
 
   // ---------- Shifts ----------
+  const ROLE_NAMES = { TL: 'Team leader', CPO: 'CPO', SDD: 'Driver', RST: 'Residence team', Medic: 'Medic', Ops: 'Operations' };
+  const shiftTimes = (s) => (s.timesTbc ? 'Times confirmed daily by the TL' : `${s.start} - ${s.end}`);
   function shiftCard(s) {
     const site = siteById(s.siteId) || {};
     return `<button class="shift-card" data-nav="shift" data-id="${s.id}">
       <div class="body">
-        <div class="d">${dayTitle(s.date)}</div>
-        <div class="t">${s.start} - ${s.end}</div>
+        <div class="d">${dayTitle(s.date)}${s.role ? ` · ${esc(ROLE_NAMES[s.role] || s.role)}` : ''}</div>
+        <div class="t">${shiftTimes(s)}</div>
         <div class="l">Customer : ${esc(site.customer || '-')}</div>
         <div class="l">Site : ${esc(site.name || '-')}</div>
         <div class="s">Status : ${statusPill(s.status)}</div>
@@ -455,13 +459,14 @@
     if (isMine && s.date >= ymd(new Date()) && !(e && e.shiftId === s.id)) actions += `<button class="btn btn-ghost btn-block" data-action="release-shift" data-id="${s.id}" style="margin-top:10px">Offer Shift for Cover</button>`;
     return topbar(isMine || s.staffId ? 'My Roster Detail' : 'Offered Shift', { left: 'back' }) + `<div class="page white">
       <div class="section"><div class="body">
-        <div class="d">${dayTitle(s.date)}</div>
-        <div class="d">${s.start} - ${s.end}</div>
+        <div class="d">${dayTitle(s.date)}${s.role ? ` · ${esc(ROLE_NAMES[s.role] || s.role)}` : ''}</div>
+        <div class="d">${shiftTimes(s)}</div>
         <div class="l">Customer : ${esc(site.customer || '-')}</div>
         <div class="l">Site : ${esc(site.name || '-')}</div>
         <div class="l" style="margin-top:10px">Status : ${statusPill(s.status)}</div>
       </div></div>
       <div class="section"><div class="body"><h3>Notes</h3><p>${esc(s.notes || '-')}</p></div></div>
+      ${(site.movements || []).some((m) => m.date === s.date) ? `<button class="section" data-nav="runsheet" data-id="${esc(s.date)}"><div class="body"><h3>Run sheet</h3><p>${(site.movements || []).filter((m) => m.date === s.date).length} movement(s) planned for this day</p></div><span class="chev">${ic(I.right, 28, 1.6)}</span></button>` : ''}
       <a class="section" href="https://www.google.com/maps/search/?api=1&query=${q}" target="_blank" rel="noopener"><div class="body">
         <h3>Open in Maps</h3>
         <p>Address : ${esc(site.address || '-')}</p><p>City : ${esc(site.city || '-')}</p><p>State : ${esc(site.region || '-')}</p><p>Country : ${esc(site.country || '-')}</p>
@@ -826,6 +831,50 @@
       db.support.push({ id: uid(), staffId, from: 'support', text: d.text.trim(), authorId: db.session, time: new Date().toISOString() });
       save(); render(); toast('Reply sent');
     });
+  }
+
+  // ---------- Run sheet (movements) and driver mode ----------
+  // Movements come from Aegis with the job (site.movements). Everyone on the job sees them; a
+  // driver (role SDD) lands here and gets big navigation buttons. Times are plans: the TL
+  // confirms the day's timings.
+  const myShifts = () => db.shifts.filter((s) => s.staffId === db.session);
+  const isDriver = () => myShifts().some((s) => s.role === 'SDD' && s.date >= ymd(addDays(new Date(), -1)));
+  function legsFor(day) {
+    const mine = new Set(myShifts().map((s) => s.siteId));
+    const sites = me()?.isAdmin ? db.sites : db.sites.filter((x) => mine.has(x.id));
+    return sites.flatMap((site) => (site.movements || []).filter((m) => m.date === day).map((m) => ({ ...m, site })))
+      .sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
+  }
+  function navLinks(place) {
+    const q = encodeURIComponent(place);
+    return `<div class="nav-btns">
+      <a class="btn btn-gold" href="https://www.google.com/maps/dir/?api=1&destination=${q}&travelmode=driving" target="_blank" rel="noopener">Google</a>
+      <a class="btn btn-ghost" href="https://waze.com/ul?q=${q}&navigate=yes" target="_blank" rel="noopener">Waze</a>
+      <a class="btn btn-ghost" href="https://maps.apple.com/?daddr=${q}&dirflg=d" target="_blank" rel="noopener">Apple</a></div>`;
+  }
+  function viewRunsheet() {
+    const day = ui.params.id || ui.runDay || ymd(new Date());
+    ui.runDay = day;
+    const legs = legsFor(day);
+    const driver = isDriver();
+    const shift = myShifts().find((s) => s.date === day);
+    const prev = ymd(addDays(new Date(day + 'T12:00:00'), -1)), next = ymd(addDays(new Date(day + 'T12:00:00'), 1));
+    return topbar('Run Sheet', { left: ui.stack.length ? 'back' : 'menu' }) + `<div class="page white">
+      <div class="run-day"><button class="tb-btn" data-nav="runsheet" data-id="${prev}">${ic(I.left || I.back, 22)}</button>
+        <div><b>${dayTitle(day)}</b><div class="small muted">${shift ? (shift.timesTbc ? 'Times confirmed daily by the TL' : `On duty ${shift.start} – ${shift.end}`) : 'Not on duty this day'}</div></div>
+        <button class="tb-btn" data-nav="runsheet" data-id="${next}">${ic(I.right, 22)}</button></div>
+      ${driver ? `<div class="pad" style="padding-top:6px"><button class="btn btn-block run-check" data-action="form-new" data-type="Vehicle Check">Before you drive: vehicle &amp; child-seat check</button></div>` : ''}
+      <div class="small muted pad" style="padding-top:2px">Planned times. The TL confirms the day's timings; follow the TL if they change.</div>
+      ${legs.length ? legs.map((l) => `<div class="leg">
+          <div class="leg-time">${esc(l.time || '—')}</div>
+          <div class="leg-main">
+            ${l.from ? `<div class="leg-from">From <b>${esc(l.from)}</b></div>` : ''}
+            ${l.to ? `<div class="leg-to">${esc(l.to)}</div>` : ''}
+            ${l.notes ? `<div class="leg-notes">${esc(l.notes)}</div>` : ''}
+            ${l.to ? navLinks(l.to) : ''}
+          </div></div>`).join('')
+        : '<div class="empty">No movements planned for this day.</div>'}
+    </div>`;
   }
 
   // ---------- Phone alerts (Web Push) ----------
@@ -1876,7 +1925,7 @@
     ticker = setInterval(tick, 1000);
   }
 
-  const VIEWS = { hq: viewHq, 'hq-roster': viewHqRoster, 'hq-staff': viewHqStaff, 'hq-sites': viewHqSites, 'hq-requests': viewHqRequests, 'hq-reports': viewHqReports, home: viewHome, shifts: viewShifts, offered: viewOffered, shift: viewShift, occurrence: viewOccurrence, leave: viewLeave, forms: viewForms, docs: viewDocs, doc: viewDoc, messages: viewMessages, thread: viewThread, register: viewRegister, welfare: viewWelfare, support: viewSupport, profile: viewProfile, briefs: viewBriefs, training: viewTraining, module: viewModule, mydocs: viewMyDocs, compliance: viewCompliance, companycompliance: viewCompanyCompliance, timesheet: viewTimesheet, admin: viewAdmin };
+  const VIEWS = { hq: viewHq, 'hq-roster': viewHqRoster, 'hq-staff': viewHqStaff, 'hq-sites': viewHqSites, 'hq-requests': viewHqRequests, 'hq-reports': viewHqReports, home: viewHome, shifts: viewShifts, offered: viewOffered, shift: viewShift, occurrence: viewOccurrence, leave: viewLeave, forms: viewForms, docs: viewDocs, doc: viewDoc, messages: viewMessages, thread: viewThread, register: viewRegister, welfare: viewWelfare, support: viewSupport, profile: viewProfile, briefs: viewBriefs, runsheet: viewRunsheet, training: viewTraining, module: viewModule, mydocs: viewMyDocs, compliance: viewCompliance, companycompliance: viewCompanyCompliance, timesheet: viewTimesheet, admin: viewAdmin };
   function render() {
     clearInterval(ticker);
     if (HQ) { renderHQ(); return; }
@@ -1885,6 +1934,7 @@
     const u = me();
     if (!u || !u.active) { db.session = null; app.innerHTML = viewLogin(); bindLogin(); return; }
     if (ui.route === 'admin' && !u.isAdmin) ui.route = 'home';
+    if (!ui.landed) { ui.landed = true; if (ui.route === CONFIG.startPage && !u.isAdmin && isDriver()) ui.route = 'runsheet'; }
     // Deep link from a "brief ready" phone alert: index.html?open=briefs
     if (ui.openParam === undefined) { ui.openParam = new URLSearchParams(location.search).get('open') || ''; if (ui.openParam === 'briefs' && CLOUD) { ui.route = 'briefs'; ui.briefs = undefined; history.replaceState(null, '', location.pathname); } }
     app.innerHTML = (VIEWS[ui.route] || viewHome)() + (ui.drawer ? drawer() : '');
