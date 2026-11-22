@@ -25,6 +25,8 @@
     supabaseAnonKey: '',
   }, window.VWG_CONFIG || {}, { version: 'v1.2.0(3)' });
   const CLOUD = !!(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
+  // Shown at the foot of the menu so anyone can tell which version their phone is running.
+  const BUILD = 22;
   // hq.html sets VWG_HQ: the desktop console for managers. It keeps its own sign-in and
   // saved copy, so it never signs out or mixes with the staff app in the same browser.
   const HQ = !!window.VWG_HQ;
@@ -343,7 +345,7 @@
           ${u.isAdmin ? `<button class="menu-item ${ui.route === 'admin' ? 'on' : ''}" data-nav="admin"><span>Admin Dashboard</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
           <button class="menu-item danger" data-action="logout"><span>Sign Out</span></button>
         </div>
-        <div class="menu-version">${CONFIG.version} - ${esc(CONFIG.region)}</div>
+        <div class="menu-version">${CONFIG.version} - ${esc(CONFIG.region)} · build ${BUILD}</div>
       </nav>
     </div></div>`;
   }
@@ -404,6 +406,14 @@
         </div>
       </div>
       <div class="pad">
+        ${(() => { // clock-on prompt from 30 minutes before a rostered shift until it ends
+          if (e) return '';
+          const soon = db.shifts.filter((x) => x.staffId === u.id && x.date === ymd(now) && x.status !== 'cancelled')
+            .find((x) => { const st = shiftStart(x); return now >= st - 30 * 60000 && now < shiftEnd(x); });
+          return soon ? `<div class="card clock-prompt"><b>${now >= shiftStart(soon) ? 'Your shift has started' : (soon.timesTbc ? 'Your shift is planned for ' : 'Your shift starts at ') + esc(soon.start) + (soon.timesTbc ? ' (TBC)' : '')}</b>
+            <div class="small">${esc(siteById(soon.siteId)?.customer || siteById(soon.siteId)?.name || '')} · clock on now</div>
+            <button class="btn btn-red btn-block" style="margin-top:10px" data-action="clock-in" data-id="${soon.id}">CLOCK IN</button></div>` : '';
+        })()}
         ${due ? `<button class="card" data-nav="welfare" style="width:100%;text-align:left;border-left:5px solid var(--amber)"><b>Welfare check due</b><div class="small muted">Tap to confirm you are OK</div></button>` : ''}
         <div class="stats">
           <div class="stat"><b>${hours(workedBetween(u.id, wk, addDays(wk, 7))).toFixed(1)}</b><span>Hours this week</span></div>
@@ -423,7 +433,7 @@
 
   // ---------- Shifts ----------
   const ROLE_NAMES = { TL: 'Team leader', CPO: 'CPO', SDD: 'Driver', RST: 'Residence team', Medic: 'Medic', Ops: 'Operations' };
-  const shiftTimes = (s) => (s.timesTbc ? 'Times confirmed daily by the TL' : `${s.start} - ${s.end}`);
+  const shiftTimes = (s) => (s.timesTbc ? `${s.start} - ${s.end} (TBC) · times confirmed daily by the TL` : `${s.start} - ${s.end}`);
   function shiftCard(s) {
     const site = siteById(s.siteId) || {};
     return `<button class="shift-card" data-nav="shift" data-id="${s.id}">
@@ -459,7 +469,8 @@
     if (s.status === 'offered' && !s.staffId) actions = `<button class="btn btn-gold btn-block" data-action="accept-shift" data-id="${s.id}">Accept Shift</button>`;
     else if (isMine && isToday && !e) actions = `<button class="btn btn-gold btn-block" data-action="clock-in" data-id="${s.id}">Clock In to this Shift</button>`;
     else if (isMine && e && e.shiftId === s.id) actions = `<button class="btn btn-red btn-block" data-action="clock-out">Clock Out</button>`;
-    if (isMine && s.date >= ymd(new Date()) && !(e && e.shiftId === s.id)) actions += `<button class="btn btn-ghost btn-block" data-action="release-shift" data-id="${s.id}" style="margin-top:10px">Offer Shift for Cover</button>`;
+    if (isMine && s.date >= ymd(new Date()) && !(e && e.shiftId === s.id) && !u.jobOnly) actions += `<button class="btn btn-ghost btn-block" data-action="release-shift" data-id="${s.id}" style="margin-top:10px">Offer Shift for Cover</button>`;
+    if (u.isAdmin) actions += `<button class="btn btn-gold btn-block" data-action="shift-edit" data-id="${s.id}" style="margin-top:10px">Edit times</button>`;
     return topbar(isMine || s.staffId ? 'My Roster Detail' : 'Offered Shift', { left: 'back' }) + `<div class="page white">
       <div class="section"><div class="body">
         <div class="d">${dayTitle(s.date)}${s.role ? ` · ${esc(ROLE_NAMES[s.role] || s.role)}` : ''}</div>
@@ -944,6 +955,16 @@
       const t = data && data[0] ? data[0].created_at : null; if (t !== ui.latestBrief) { ui.latestBrief = t; requestRender(); } } catch (e) { /* offline */ }
   }
 
+  // Privacy: blank the screen while the app is in the background, so the phone's app-switcher
+  // preview never shows a brief, a run sheet or a message.
+  const privacyOn = () => { if (!canScreenshot()) document.body.classList.add('privacy-cover'); };
+  const privacyOff = () => document.body.classList.remove('privacy-cover');
+  document.addEventListener('visibilitychange', () => (document.hidden ? privacyOn() : privacyOff()));
+  window.addEventListener('pagehide', privacyOn);
+  window.addEventListener('pageshow', privacyOff);
+  window.addEventListener('blur', () => { if (!HQ && ['pdf', 'runsheet', 'doc', 'thread', 'briefs'].includes(ui.route)) privacyOn(); });
+  window.addEventListener('focus', privacyOff);
+
   // In-app alert tone + vibration when a push arrives while the app is open.
   let audioCtx = null;
   document.addEventListener('pointerdown', () => { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch (e) { /* no audio */ } }, { once: false, passive: true });
@@ -1126,7 +1147,7 @@
     const prev = ymd(addDays(new Date(day + 'T12:00:00'), -1)), next = ymd(addDays(new Date(day + 'T12:00:00'), 1));
     return topbar('Run Sheet', { left: ui.stack.length ? 'back' : 'menu' }) + `<div class="page white">
       <div class="run-day"><button class="tb-btn" data-nav="runsheet" data-id="${prev}">${ic(I.left || I.back, 22)}</button>
-        <div><b>${dayTitle(day)}</b><div class="small muted">${shift ? (shift.timesTbc ? 'Times confirmed daily by the TL' : `On duty ${shift.start} – ${shift.end}`) : 'Not on duty this day'}</div></div>
+        <div><b>${dayTitle(day)}</b><div class="small muted">${shift ? (shift.timesTbc ? `Planned ${shift.start} – ${shift.end} (TBC) · the TL confirms daily` : `On duty ${shift.start} – ${shift.end}`) : 'Not on duty this day'}</div></div>
         <button class="tb-btn" data-nav="runsheet" data-id="${next}">${ic(I.right, 22)}</button></div>
       ${driver ? `<div class="pad" style="padding-top:6px"><button class="btn btn-block run-check" data-action="form-new" data-type="Vehicle Check">Before you drive: vehicle &amp; child-seat check</button></div>` : ''}
       <div class="small muted pad" style="padding-top:2px">Planned times. The TL confirms the day's timings; follow the TL if they change.</div>
@@ -1234,6 +1255,35 @@
       <div class="pdf-mark">VAN WYNGAARDT GLOBAL · CONFIDENTIAL · DO NOT SHARE OR SCREENSHOT</div>
       <div id="pdf-pages"><div class="empty">Opening…</div></div></div>`;
   }
+  // Every page carries the viewer's name and the time it was opened, so any screenshot or photo of
+  // it traces back to that person (web apps cannot block screenshots).
+  // Managers and team leaders may screenshot freely (Jack 2026-11-22): no watermark, no cover.
+  function canScreenshot() {
+    const u = me(); if (!u) return false;
+    if (u.isAdmin) return true;
+    const today = ymd(new Date());
+    return db.shifts.some((x) => x.staffId === u.id && x.role === 'TL' && x.date >= today);
+  }
+  function watermark(canvas) {
+    const u = me(); if (!u || canScreenshot()) return;
+    const ctx = canvas.getContext('2d'); const now = new Date();
+    const text = `${u.name} · ${dmy(now)} ${fmtTime(now)} · VWG CONFIDENTIAL`;
+    const size = Math.max(14, Math.round(canvas.width / 30));
+    ctx.save();
+    ctx.font = `600 ${size}px Manrope, Arial, sans-serif`;
+    ctx.fillStyle = 'rgba(200, 30, 30, 0.16)';
+    ctx.translate(canvas.width / 2, canvas.height / 2); ctx.rotate(-Math.PI / 6);
+    const step = size * 5.5; const span = Math.hypot(canvas.width, canvas.height);
+    const w = ctx.measureText(text).width + size * 3;
+    for (let y = -span / 2; y < span / 2; y += step) {
+      for (let x = -span / 2 - ((y / step) % 2 ? w / 2 : 0); x < span / 2; x += w) ctx.fillText(text, x, y);
+    }
+    ctx.restore();
+    // a clear line along the foot of each page as well
+    ctx.save(); ctx.font = `600 ${Math.round(size * 0.7)}px Manrope, Arial, sans-serif`; ctx.fillStyle = 'rgba(160, 20, 20, 0.55)';
+    ctx.textAlign = 'center'; ctx.fillText(`Issued to ${u.name} · ${dmy(now)} ${fmtTime(now)} · do not share`, canvas.width / 2, canvas.height - size * 0.6);
+    ctx.restore();
+  }
   async function renderPdf(bucket, path) {
     const box = document.getElementById('pdf-pages'); if (!box || box.dataset.path === path) return;
     box.dataset.path = path;
@@ -1251,6 +1301,7 @@
         const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height; c.className = 'pdf-canvas';
         box.appendChild(c);
         await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+        watermark(c);
       }
     } catch (e) {
       box.dataset.path = '';
@@ -1544,7 +1595,13 @@
       if (!db.sites.length) return 'Add a site first';
       const base = { staffId: d.staffId || null, siteId: d.siteId, start: d.start, end: d.end, notes: d.notes.trim(), status: d.staffId ? d.status : 'offered' };
       if (isNew) { const n = Number(d.repeat) || 1; for (let i = 0; i < n; i++) db.shifts.push({ id: uid(), ...base, date: ymd(addDays(parseYmd(d.date), i)) }); }
-      else Object.assign(db.shifts.find((x) => x.id === s.id), base, { date: d.date });
+      else {
+        const sh = db.shifts.find((x) => x.id === s.id);
+        // A manager setting the hours confirms a "times confirmed daily" day (it then gets a clock-on reminder).
+        const timesChanged = sh.start !== d.start || sh.end !== d.end;
+        Object.assign(sh, base, { date: d.date });
+        if (timesChanged) { sh.timesTbc = false; sh.timesSetBy = 'manager'; sh.timesSetAt = new Date().toISOString(); }
+      }
       save(); render(); toast('Shift saved');
     });
   }

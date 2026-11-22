@@ -714,3 +714,10 @@ body.hq-body .sheet { max-width: 560px; border-radius: 14px; max-height: 90vh; }
 #pdf-pages{padding:8px 6px}
 .pdf-canvas{display:block;width:100%;height:auto;margin:0 0 8px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.35);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #pdf-pages .empty{color:#ddd}
+
+.clock-prompt{border-left:5px solid #d62828;background:#fff5f5;padding:14px}
+
+/* Privacy cover while the app is in the background */
+body.privacy-cover #app, body.privacy-cover #sheet-root{filter:blur(24px)}
+body.privacy-cover::after{content:'VAN WYNGAARDT GLOBAL';position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;
+  background:#0b0b0c;color:#c4a36a;font:700 18px/1 Manrope,Arial,sans-serif;letter-spacing:.3em}
