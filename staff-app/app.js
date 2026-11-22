@@ -652,7 +652,7 @@
       <div class="small muted">${esc(docHeading(d))}</div>
       <h2 style="margin:4px 0 2px">${esc(d.title)}</h2><div class="small muted" style="margin-bottom:14px">Updated ${dmy(new Date(d.date))} · ${docStatus(d)}</div>
       <div class="doc-body">${esc(d.body)}</div>
-      ${d.file && CLOUD ? `<button class="btn btn-gold btn-block" style="margin-top:16px" data-action="file-open" data-bucket="${esc(d.file.bucket)}" data-id="${esc(d.file.path)}">Open ${esc(d.file.name || 'PDF')}</button>` : ''}
+      ${d.file && CLOUD ? `<button class="btn btn-gold btn-block" style="margin-top:16px" data-action="file-open" data-bucket="${esc(d.file.bucket)}" data-id="${esc(d.file.path)}" data-title="${esc(d.title)}">Open ${esc(d.file.name || 'PDF')}</button>` : ''}
       ${d.requireSign ? `<div style="margin-top:24px">${r ? `<div class="muted small">✓ You signed this on ${fmtStamp(r.time)}</div>` : `<button class="btn btn-gold btn-block" data-action="doc-read" data-id="${d.id}">I have read and understood</button>`}</div>` : ''}
       ${u.isAdmin ? `<div class="small muted" style="margin-top:18px">${d.requireSign ? `Signed by ${db.docReads.filter((x) => x.docId === d.id).length} of ${db.staff.filter((s) => s.active).length} staff` : ''}</div>
         <button class="btn btn-ghost btn-block" style="margin-top:10px;color:var(--red)" data-action="doc-delete" data-id="${d.id}">${ic(I.trash, 18)}Delete document</button>` : ''}
@@ -1205,16 +1205,57 @@
     const body = list === null ? '<div class="empty">Loading…</div>'
       : list.error ? `<div class="empty">Couldn't load briefs: ${esc(list.error)}</div>`
       : !list.length ? `<div class="empty">${me().isAdmin ? 'No briefs yet. The next one arrives at 07:00.' : 'No intel brief for you right now. Briefs appear here for the area of the job you are deployed on.'}</div>`
-      : list.map((b, i) => `<button class="item" data-action="brief-open" data-id="${esc(b.path)}"><div class="item-main"><div class="item-title">${esc(b.title)}${i === 0 ? ' <span class="small" style="color:var(--gold, #c9a227)">· latest</span>' : ''}</div><div class="item-sub">${fmtStamp(b.created_at)} · ${Math.round((b.size || 0) / 1024)} KB · PDF</div></div><span class="chev">${ic(I.right, 20)}</span></button>`).join('');
+      : list.map((b, i) => `<button class="item" data-action="brief-open" data-id="${esc(b.path)}" data-title="${esc(b.title)}"><div class="item-main"><div class="item-title">${esc(b.title)}${i === 0 ? ' <span class="small" style="color:var(--gold, #c9a227)">· latest</span>' : ''}</div><div class="item-sub">${fmtStamp(b.created_at)} · ${Math.round((b.size || 0) / 1024)} KB · PDF</div></div><span class="chev">${ic(I.right, 20)}</span></button>`).join('');
     return topbar('Intel Briefs', { right: '<button class="tb-btn" data-action="briefs-refresh">Refresh</button>' }) + `<div class="page white">
       <div class="pad small muted">${me().isAdmin ? 'Daily VWG Intel briefs (all areas). Kept for 30 days.' : 'Intel briefs for the area of your current job. Confidential: do not share, screenshot or forward.'}</div>
       <div class="card">${body}</div></div>`;
   }
-  async function openBrief(path, bucket = 'briefs') {
-    const w = window.open('', '_blank'); // opened during the tap so the browser allows it
-    const { data, error } = await cloud.sb.storage.from(bucket).createSignedUrl(path, 600);
-    if (error || !data?.signedUrl) { if (w) w.close(); toast(error ? error.message : 'Could not open the brief'); return; }
-    if (w) w.location.href = data.signedUrl; else location.href = data.signedUrl;
+  // Confidential PDFs (intel briefs, job and driver briefs) open inside the app with a VWG title:
+  // the file is fetched through a short-lived signed link and drawn page by page (PDF.js), so no
+  // storage address or file name is ever shown, and there is no separate file to save or forward.
+  function openBrief(path, bucket = 'briefs', title = '') {
+    go('pdf', { bucket, path, title: title || 'VWG document' });
+  }
+  let pdfjsReady = null;
+  function loadPdfJs() {
+    if (!pdfjsReady) pdfjsReady = new Promise((resolve, reject) => {
+      const sc = document.createElement('script');
+      sc.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+      sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js'; resolve(window.pdfjsLib); };
+      sc.onerror = () => { pdfjsReady = null; reject(new Error('Could not load the viewer: check your connection')); };
+      document.head.appendChild(sc);
+    });
+    return pdfjsReady;
+  }
+  function viewPdf() {
+    const { bucket, path, title } = ui.params;
+    setTimeout(() => renderPdf(bucket, path), 0);
+    return topbar(title || 'VWG document', { left: 'back' }) + `<div class="page pdf-page">
+      <div class="pdf-mark">VAN WYNGAARDT GLOBAL · CONFIDENTIAL · DO NOT SHARE OR SCREENSHOT</div>
+      <div id="pdf-pages"><div class="empty">Opening…</div></div></div>`;
+  }
+  async function renderPdf(bucket, path) {
+    const box = document.getElementById('pdf-pages'); if (!box || box.dataset.path === path) return;
+    box.dataset.path = path;
+    try {
+      const [{ data, error }, pdfjs] = await Promise.all([cloud.sb.storage.from(bucket).createSignedUrl(path, 120), loadPdfJs()]);
+      if (error || !data?.signedUrl) throw new Error(error ? error.message : 'Could not open the document');
+      const bytes = await (await fetch(data.signedUrl)).arrayBuffer();
+      const doc = await pdfjs.getDocument({ data: bytes }).promise;
+      box.innerHTML = '';
+      const width = box.clientWidth || window.innerWidth; const ratio = Math.min(window.devicePixelRatio || 1, 2.5);
+      for (let n = 1; n <= doc.numPages; n++) {
+        if (!document.body.contains(box)) return; // they navigated away
+        const page = await doc.getPage(n);
+        const vp1 = page.getViewport({ scale: 1 }); const vp = page.getViewport({ scale: (width / vp1.width) * ratio });
+        const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height; c.className = 'pdf-canvas';
+        box.appendChild(c);
+        await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+      }
+    } catch (e) {
+      box.dataset.path = '';
+      box.innerHTML = `<div class="empty">${esc(e.message || 'Could not open the document')}</div>`;
+    }
   }
 
   // ---------- Profile ----------
@@ -2194,7 +2235,7 @@
     ticker = setInterval(tick, 1000);
   }
 
-  const VIEWS = { hq: viewHq, 'hq-roster': viewHqRoster, 'hq-staff': viewHqStaff, 'hq-sites': viewHqSites, 'hq-requests': viewHqRequests, 'hq-reports': viewHqReports, home: viewHome, shifts: viewShifts, offered: viewOffered, shift: viewShift, occurrence: viewOccurrence, leave: viewLeave, forms: viewForms, docs: viewDocs, doc: viewDoc, messages: viewMessages, thread: viewThread, register: viewRegister, welfare: viewWelfare, support: viewSupport, profile: viewProfile, briefs: viewBriefs, runsheet: viewRunsheet, training: viewTraining, module: viewModule, mydocs: viewMyDocs, compliance: viewCompliance, companycompliance: viewCompanyCompliance, timesheet: viewTimesheet, admin: viewAdmin };
+  const VIEWS = { hq: viewHq, 'hq-roster': viewHqRoster, 'hq-staff': viewHqStaff, 'hq-sites': viewHqSites, 'hq-requests': viewHqRequests, 'hq-reports': viewHqReports, home: viewHome, shifts: viewShifts, offered: viewOffered, shift: viewShift, occurrence: viewOccurrence, leave: viewLeave, forms: viewForms, docs: viewDocs, doc: viewDoc, messages: viewMessages, thread: viewThread, register: viewRegister, welfare: viewWelfare, support: viewSupport, profile: viewProfile, briefs: viewBriefs, runsheet: viewRunsheet, pdf: viewPdf, training: viewTraining, module: viewModule, mydocs: viewMyDocs, compliance: viewCompliance, companycompliance: viewCompanyCompliance, timesheet: viewTimesheet, admin: viewAdmin };
   function render() {
     clearInterval(ticker);
     attCache = null;
@@ -2330,7 +2371,7 @@
   document.addEventListener('click', async (ev) => {
     const nav = ev.target.closest('[data-nav]');
     // Detail pages get a Back button; top-level pages reset history and show the menu button.
-    if (nav) { closeSheet(); go(nav.dataset.nav, { id: nav.dataset.id }, ['shift', 'doc', 'module', 'thread', 'mydocs', 'compliance', 'companycompliance'].includes(nav.dataset.nav)); return; }
+    if (nav) { closeSheet(); go(nav.dataset.nav, { id: nav.dataset.id }, ['shift', 'doc', 'module', 'thread', 'mydocs', 'compliance', 'companycompliance', 'pdf'].includes(nav.dataset.nav)); return; }
     const ts = ev.target.closest('[data-ts]'); if (ts) { ui.tsRange = ts.dataset.ts; render(); return; }
     const at = ev.target.closest('[data-admin]'); if (at) { ui.adminTab = at.dataset.admin; render(); return; }
     const dt = ev.target.closest('[data-doctab]'); if (dt) { ui.docTab = dt.dataset.doctab; render(); return; }
@@ -2480,8 +2521,8 @@
         alert(`Temporary password for ${s.name}:\n\n${temp}\n\nGive this to them and ask them to change it under My Profile.`);
         break;
       }
-      case 'brief-open': openBrief(id).catch((e) => toast(e.message)); break;
-      case 'file-open': if (['jobdocs', 'briefs'].includes(btn.dataset.bucket)) openBrief(id, btn.dataset.bucket).catch((e) => toast(e.message)); break;
+      case 'brief-open': openBrief(id, 'briefs', btn.dataset.title); break;
+      case 'file-open': if (['jobdocs', 'briefs'].includes(btn.dataset.bucket)) openBrief(id, btn.dataset.bucket, btn.dataset.title); break;
       case 'briefs-refresh': ui.briefs = null; render(); loadBriefs(); break;
       case 'onb-details': sheetOnbDetails(); break;
       case 'onb-docs': sheetOnbDocs(); break;
