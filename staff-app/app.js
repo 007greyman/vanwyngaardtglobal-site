@@ -639,7 +639,7 @@
       <div class="tabs">${DOC_TABS.map(([k, label]) => `<button class="${ui.docTab === k ? 'on' : ''}" data-doctab="${k}">${label}</button>`).join('')}</div>
       <div class="pad" style="padding-bottom:4px"><input class="keyword" id="doc-q" placeholder="Enter Keyword here..." value="${esc(ui.docQ)}" autocomplete="off"></div>
       <div id="doc-list">${list.length ? list.map((d) => `<button class="section" data-nav="doc" data-id="${d.id}"><div class="body">
-        <h3 style="margin:10px 0 12px">${esc(docHeading(d))}</h3><p style="font-size:17px">${esc(d.title)}</p>
+        <h3 style="margin:10px 0 12px">${esc(docHeading(d))}</h3><p style="font-size:17px">${esc(d.title)}${u.isAdmin && d.audience && d.audience !== 'all' ? ` <span class="status ${d.audience === 'driver' ? 'st-pending' : 'st-valid'}">${d.audience === 'driver' ? 'Drivers only' : 'Team (not drivers)'}</span>` : ''}</p>
         <p class="l">Status : &nbsp;<b>${docStatus(d)}</b></p></div><span class="chev">${ic(I.right, 22, 1.6)}</span></button>`).join('') : '<div class="empty" style="padding-top:30vh">No documents found.</div>'}</div>
     </div>`;
   }
