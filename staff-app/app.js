@@ -336,7 +336,7 @@
         </div>
         <div class="menu">
           ${MENU.map(([r, label]) => `<button class="menu-item ${ui.route === r ? 'on' : ''}" data-nav="${r}"><span>${label}</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>`).join('')}
-          ${CLOUD && u.isAdmin ? `<button class="menu-item ${ui.route === 'briefs' ? 'on' : ''}" data-nav="briefs"><span>Intel Briefs</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
+          ${CLOUD ? `<button class="menu-item ${ui.route === 'briefs' ? 'on' : ''}" data-nav="briefs"><span>Intel Briefs</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
           ${u.isAdmin ? `<button class="menu-item ${ui.route === 'admin' ? 'on' : ''}" data-nav="admin"><span>Admin Dashboard</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
           <button class="menu-item danger" data-action="logout"><span>Sign Out</span></button>
         </div>
@@ -644,6 +644,7 @@
       <div class="small muted">${esc(docHeading(d))}</div>
       <h2 style="margin:4px 0 2px">${esc(d.title)}</h2><div class="small muted" style="margin-bottom:14px">Updated ${dmy(new Date(d.date))} · ${docStatus(d)}</div>
       <div class="doc-body">${esc(d.body)}</div>
+      ${d.file && CLOUD ? `<button class="btn btn-gold btn-block" style="margin-top:16px" data-action="file-open" data-bucket="${esc(d.file.bucket)}" data-id="${esc(d.file.path)}">Open ${esc(d.file.name || 'PDF')}</button>` : ''}
       ${d.requireSign ? `<div style="margin-top:24px">${r ? `<div class="muted small">✓ You signed this on ${fmtStamp(r.time)}</div>` : `<button class="btn btn-gold btn-block" data-action="doc-read" data-id="${d.id}">I have read and understood</button>`}</div>` : ''}
       ${u.isAdmin ? `<div class="small muted" style="margin-top:18px">${d.requireSign ? `Signed by ${db.docReads.filter((x) => x.docId === d.id).length} of ${db.staff.filter((s) => s.active).length} staff` : ''}</div>
         <button class="btn btn-ghost btn-block" style="margin-top:10px;color:var(--red)" data-action="doc-delete" data-id="${d.id}">${ic(I.trash, 18)}Delete document</button>` : ''}
@@ -845,7 +846,7 @@
     const reg = await navigator.serviceWorker.ready;
     const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBytes(CONFIG.pushPublicKey) });
     const j = sub.toJSON();
-    const { error } = await cloud.sb.from('push_subscriptions').upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device: deviceLabel(), topics: ['intel', 'brief', 'test'] });
+    const { error } = await cloud.sb.from('push_subscriptions').upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device: deviceLabel(), topics: me().isAdmin ? ['intel', 'brief', 'test'] : ['brief', 'test'] });
     if (error) { await sub.unsubscribe().catch(() => {}); throw new Error(error.message); }
   }
   async function pushOff() {
@@ -867,7 +868,7 @@
     }
     const on = !!(await pushSub()) && Notification.permission === 'granted';
     openSheet(`<h2>Phone alerts</h2>
-      <p class="small">Serious items from the VWG Intel watch (marked UNVERIFIED) and the daily brief, sent straight to this device. Each alert is encrypted for this device only.</p>
+      <p class="small">${me().isAdmin ? 'Serious items from the VWG Intel watch (marked UNVERIFIED) and the daily brief' : 'The intel brief for the area of your job'}, sent straight to this device. Each alert is encrypted for this device only.</p>
       <p><b>Status:</b> ${on ? 'On for this device' : 'Off for this device'}</p>
       ${on ? `<button class="btn btn-gold btn-block" data-action="push-test">Send a test alert</button>
               <button class="btn btn-block" style="margin-top:8px" data-action="push-off">Turn off on this device</button>`
@@ -883,20 +884,20 @@
     if (ui.route === 'briefs') render();
   }
   function viewBriefs() {
-    if (!CLOUD || !me().isAdmin) return viewHome();
+    if (!CLOUD) return viewHome();
     if (ui.briefs === undefined) { ui.briefs = null; loadBriefs(); }
     const list = ui.briefs;
     const body = list === null ? '<div class="empty">Loading…</div>'
       : list.error ? `<div class="empty">Couldn't load briefs: ${esc(list.error)}</div>`
-      : !list.length ? '<div class="empty">No briefs yet. The next one arrives at 07:00.</div>'
+      : !list.length ? `<div class="empty">${me().isAdmin ? 'No briefs yet. The next one arrives at 07:00.' : 'No intel brief for you right now. Briefs appear here for the area of the job you are deployed on.'}</div>`
       : list.map((b, i) => `<button class="item" data-action="brief-open" data-id="${esc(b.path)}"><div class="item-main"><div class="item-title">${esc(b.title)}${i === 0 ? ' <span class="small" style="color:var(--gold, #c9a227)">· latest</span>' : ''}</div><div class="item-sub">${fmtStamp(b.created_at)} · ${Math.round((b.size || 0) / 1024)} KB · PDF</div></div><span class="chev">${ic(I.right, 20)}</span></button>`).join('');
     return topbar('Intel Briefs', { right: '<button class="tb-btn" data-action="briefs-refresh">Refresh</button>' }) + `<div class="page white">
-      <div class="pad small muted">Daily VWG Intel briefs. Managers only. Kept for 30 days.</div>
+      <div class="pad small muted">${me().isAdmin ? 'Daily VWG Intel briefs (all areas). Kept for 30 days.' : 'Intel briefs for the area of your current job. Confidential: do not share, screenshot or forward.'}</div>
       <div class="card">${body}</div></div>`;
   }
-  async function openBrief(path) {
+  async function openBrief(path, bucket = 'briefs') {
     const w = window.open('', '_blank'); // opened during the tap so the browser allows it
-    const { data, error } = await cloud.sb.storage.from('briefs').createSignedUrl(path, 600);
+    const { data, error } = await cloud.sb.storage.from(bucket).createSignedUrl(path, 600);
     if (error || !data?.signedUrl) { if (w) w.close(); toast(error ? error.message : 'Could not open the brief'); return; }
     if (w) w.location.href = data.signedUrl; else location.href = data.signedUrl;
   }
@@ -917,7 +918,7 @@
       ${row('Mobile', 'phone', u.phone, 'type="tel" autocomplete="tel"')}
       ${row('Pin', 'pin', u.pin || '', 'inputmode="numeric" pattern="\\d{4}" maxlength="4"')}
       ${link('mydocs', 'My Documents')}${link('compliance', 'My Compliance')}${link('companycompliance', 'Company Compliance')}
-      ${CLOUD && u.isAdmin ? `<button type="button" class="pf-row" data-action="push-setup"><b>Phone alerts</b><span class="chev">${ic(I.right, 22, 1.6)}</span></button>` : ''}
+      ${CLOUD ? `<button type="button" class="pf-row" data-action="push-setup"><b>Phone alerts</b><span class="chev">${ic(I.right, 22, 1.6)}</span></button>` : ''}
       <div class="error" id="profile-error" style="padding:6px 12px 0"></div>
       <button class="btn btn-gold btn-block pf-save" type="submit">Save Changes</button>
       <button type="button" class="btn btn-block pf-logout" data-action="logout">Logout</button>
@@ -1885,7 +1886,7 @@
     if (!u || !u.active) { db.session = null; app.innerHTML = viewLogin(); bindLogin(); return; }
     if (ui.route === 'admin' && !u.isAdmin) ui.route = 'home';
     // Deep link from a "brief ready" phone alert: index.html?open=briefs
-    if (ui.openParam === undefined) { ui.openParam = new URLSearchParams(location.search).get('open') || ''; if (ui.openParam === 'briefs' && CLOUD && u.isAdmin) { ui.route = 'briefs'; ui.briefs = undefined; history.replaceState(null, '', location.pathname); } }
+    if (ui.openParam === undefined) { ui.openParam = new URLSearchParams(location.search).get('open') || ''; if (ui.openParam === 'briefs' && CLOUD) { ui.route = 'briefs'; ui.briefs = undefined; history.replaceState(null, '', location.pathname); } }
     app.innerHTML = (VIEWS[ui.route] || viewHome)() + (ui.drawer ? drawer() : '');
     bindPage();
     ticker = setInterval(tick, 1000);
@@ -2141,6 +2142,7 @@
         break;
       }
       case 'brief-open': openBrief(id).catch((e) => toast(e.message)); break;
+      case 'file-open': if (['jobdocs', 'briefs'].includes(btn.dataset.bucket)) openBrief(id, btn.dataset.bucket).catch((e) => toast(e.message)); break;
       case 'briefs-refresh': ui.briefs = null; render(); loadBriefs(); break;
       case 'push-setup': sheetPush().catch((e) => toast(e.message)); break;
       case 'push-on': try { btn.disabled = true; await pushOn(); toast('Alerts on. Sending a test…'); await pushTest(); closeSheet(); } catch (e) { toast(e.message); btn.disabled = false; } break;

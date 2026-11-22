@@ -3,7 +3,7 @@
 // Two callers:
 //  1. VWG Intel (laptop now, AWS later): header `x-vwg-push-key: <sender secret>`, any topic.
 //     Only the secret's SHA-256 is stored (private.push_config.send_secret_sha256).
-//  2. A signed-in manager in the Staff app: Authorization: Bearer <user JWT>, topic "test" only,
+//  2. A signed-in staff member in the Staff app: Authorization: Bearer <user JWT>, topic "test" only,
 //     sent to that person's own devices.
 // Each alert is encrypted for the receiving device (RFC 8291) by web-push, so the push service
 // (Apple/Google/Mozilla) only carries ciphertext. Dead subscriptions (404/410) are removed.
@@ -43,8 +43,8 @@ function sameHex(a: string, b: string) {
   return x === 0;
 }
 
-// The staff id of the caller's JWT, if they are an active manager.
-async function adminStaffId(req: Request): Promise<string | null> {
+// The staff id of the caller's JWT, if they are active staff (managers and operators).
+async function callerStaffId(req: Request): Promise<string | null> {
   const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return null;
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!);
@@ -52,14 +52,14 @@ async function adminStaffId(req: Request): Promise<string | null> {
   if (error || !data.user?.email || !data.user.email_confirmed_at) return null;
   const rows = await sql`select id from public.records where collection = 'staff'
     and lower(data->>'email') = lower(${data.user.email})
-    and coalesce((data->>'active')::boolean, true) and coalesce((data->>'isAdmin')::boolean, false) limit 1`;
+    and coalesce((data->>'active')::boolean, true) limit 1`;
   return rows[0]?.id ?? null;
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
-  let msg: { topic?: string; title?: string; body?: string; url?: string; tag?: string };
+  let msg: { topic?: string; title?: string; body?: string; url?: string; tag?: string; area?: string };
   try { msg = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   const topic = String(msg.topic || "");
   if (!/^(intel|brief|test)$/.test(topic)) return json({ error: "unknown topic" }, 400);
@@ -70,17 +70,25 @@ Deno.serve(async (req) => {
   if (key) {
     if (!sameHex(await sha256hex(key), c.send_secret_sha256)) return json({ error: "forbidden" }, 403);
   } else {
-    onlyStaff = await adminStaffId(req);
+    onlyStaff = await callerStaffId(req);
     if (!onlyStaff || topic !== "test") return json({ error: "forbidden" }, 403);
   }
 
-  // Intel and briefs go to active managers only (Jack 2026-11-22: managers only for now);
-  // tests to the caller's own devices.
+  // Intel goes to active managers only. A brief goes to managers and to operators deployed
+  // (shift from yesterday onwards) at a site in the brief's area (Jack 2026-11-22). Tests go
+  // to the caller's own devices.
+  const area = msg.area ? String(msg.area).toLowerCase().slice(0, 40) : null;
   const subs = await sql`select s.endpoint, s.p256dh, s.auth from public.push_subscriptions s
     join public.records r on r.collection = 'staff' and r.id = s.staff_id
     where ${topic} = any(s.topics)
       and coalesce((r.data->>'active')::boolean, true)
-      and (${topic} = 'test' or coalesce((r.data->>'isAdmin')::boolean, false))
+      and (${topic} = 'test' or coalesce((r.data->>'isAdmin')::boolean, false)
+           or (${topic} = 'brief' and ${area}::text is not null and exists (
+                select 1 from public.records sh join public.records si
+                  on si.collection = 'sites' and si.id = sh.data->>'siteId'
+                where sh.collection = 'shifts' and sh.owner = r.id
+                  and (sh.data->>'date')::date >= current_date - 1
+                  and lower(si.data->>'area') = ${area})))
       and (${onlyStaff}::text is null or s.staff_id = ${onlyStaff})`;
 
   const payload = JSON.stringify({
