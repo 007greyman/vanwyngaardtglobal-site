@@ -1,3 +1,5 @@
+-- Copyright (c) 2026 Jack van Wyngaardt. All rights reserved.
+-- Proprietary and confidential. Licensed to Van Wyngaardt Global Ltd. See LICENSE.txt.
 -- VWG Staff: phone alerts (Web Push). Run after schema.sql. Safe to run again.
 --
 -- push_subscriptions: one row per device that turned alerts on. Each person can only see,

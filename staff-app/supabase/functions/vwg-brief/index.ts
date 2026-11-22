@@ -1,3 +1,5 @@
+/* Copyright (c) 2026 Jack van Wyngaardt. All rights reserved.
+ * Proprietary and confidential. Licensed to Van Wyngaardt Global Ltd. See LICENSE.txt. */
 // vwg-brief: stores the VWG Intel daily brief PDF for the Staff app's "Intel Briefs" page.
 //
 // Called by VWG Intel (laptop now, AWS later) with header `x-vwg-push-key: <sender secret>`
