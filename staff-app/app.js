@@ -639,7 +639,7 @@
       <div class="tabs">${DOC_TABS.map(([k, label]) => `<button class="${ui.docTab === k ? 'on' : ''}" data-doctab="${k}">${label}</button>`).join('')}</div>
       <div class="pad" style="padding-bottom:4px"><input class="keyword" id="doc-q" placeholder="Enter Keyword here..." value="${esc(ui.docQ)}" autocomplete="off"></div>
       <div id="doc-list">${list.length ? list.map((d) => `<button class="section" data-nav="doc" data-id="${d.id}"><div class="body">
-        <h3 style="margin:10px 0 12px">${esc(docHeading(d))}</h3><p style="font-size:17px">${esc(d.title)}</p>
+        <h3 style="margin:10px 0 12px">${esc(docHeading(d))}</h3><p style="font-size:17px">${esc(d.title)}${u.isAdmin && d.audience && d.audience !== 'all' ? ` <span class="status ${d.audience === 'driver' ? 'st-pending' : 'st-valid'}">${d.audience === 'driver' ? 'Drivers only' : 'Team (not drivers)'}</span>` : ''}</p>
         <p class="l">Status : &nbsp;<b>${docStatus(d)}</b></p></div><span class="chev">${ic(I.right, 22, 1.6)}</span></button>`).join('') : '<div class="empty" style="padding-top:30vh">No documents found.</div>'}</div>
     </div>`;
   }
@@ -2017,11 +2017,12 @@
     ['Monitor', [['hq', 'Live Overview', I.home], ['hq-requests', 'Requests', I.log], ['occurrence', 'Occurrence Log', I.clock], ['register', 'Sign On Register', I.qr]]],
     ['Operations', [['hq-roster', 'Roster', I.cal], ['hq-staff', 'Staff', I.user], ['hq-sites', 'Sites', I.shield], ['forms', 'Incident / Forms', I.log]]],
     ['Team', [['messages', 'Team Message', I.chat], ['docs', 'Document Library', I.log], ['training', 'Training', I.heart]]],
+    ['Intel', [['briefs', 'Intel Briefs', I.shield], ['runsheet', 'Run Sheets', I.cal]]],
     ['Reports', [['hq-reports', 'Hours & Exports', I.download]]],
   ];
   // Detail pages light up their parent in the sidebar.
-  const HQ_PARENT = { doc: 'docs', module: 'training', thread: 'messages' };
-  const HQ_ROUTES = ['hq', 'hq-requests', 'hq-roster', 'hq-staff', 'hq-sites', 'hq-reports', 'occurrence', 'register', 'forms', 'messages', 'thread', 'docs', 'doc', 'training', 'module'];
+  const HQ_PARENT = { doc: 'docs', module: 'training', thread: 'messages', pdf: 'briefs' };
+  const HQ_ROUTES = ['hq', 'hq-requests', 'hq-roster', 'hq-staff', 'hq-sites', 'hq-reports', 'occurrence', 'register', 'forms', 'messages', 'thread', 'docs', 'doc', 'training', 'module', 'briefs', 'runsheet', 'pdf'];
   const hq = { alertsOn: false, seenHelp: null, refreshAt: 0 };
   const LATE_GRACE_MIN = 5;
   const shiftStart = (s) => { const d = parseYmd(s.date); const [h, m] = s.start.split(':').map(Number); d.setHours(h, m, 0, 0); return d; };
@@ -2043,7 +2044,9 @@
 
   function hqNav() {
     const active = HQ_PARENT[ui.route] || ui.route;
-    const badge = { hq: helpAlerts().length, 'hq-requests': pendingCount() };
+    const att = attention();
+    const badge = { hq: helpAlerts().length, 'hq-requests': pendingCount(), messages: att.messages, briefs: att.briefs,
+      'hq-staff': db.staff.filter((x) => x.onboarding && x.onboarding.status === 'submitted').length };
     return HQ_NAV.map(([group, items]) => `<div class="hq-group">${group}</div>${items.map(([r, label, icon]) => `<button class="hq-link ${active === r ? 'on' : ''}" data-nav="${r}">${ic(icon, 18)}<span>${label}</span>${badge[r] ? `<em class="${r === 'hq' ? 'alert' : ''}">${badge[r]}</em>` : ''}</button>`).join('')}`).join('');
   }
 
@@ -2171,10 +2174,10 @@
     const from = startOfWeek(new Date()); const to = addDays(from, 7); const mods = db.training.filter((t) => t.q).length;
     const rows = db.staff.slice().sort((a, b) => (b.active - a.active) || a.name.localeCompare(b.name)).map((s) => {
       const e = openEntry(s.id); const issues = s.isAdmin ? 0 : complianceIssues(s); const done = db.training.filter((t) => t.q && db.trainingDone.some((x) => x.moduleId === t.id && x.staffId === s.id)).length;
-      return `<tr class="${s.active ? '' : 'inactive'}"><td>${who(s)}</td><td>${esc(s.dept || '')}${s.isAdmin ? '<span class="sub">Admin</span>' : ''}</td><td>${telLink(s)}<span class="sub">${esc(s.email)}</span></td>
+      return `<tr class="${s.active ? '' : 'inactive'}"><td>${who(s)}</td><td>${esc(s.dept || '')}${s.isAdmin ? '<span class="sub">Admin</span>' : ''}${s.jobOnly ? '<span class="sub">Job-only access</span>' : ''}</td><td>${telLink(s)}<span class="sub">${esc(s.email)}</span></td>
         <td>${!s.active ? '<span class="status st-low">Inactive</span>' : e ? `<span class="status st-on-site">✓ On shift</span><span class="sub">${esc(siteById(e.siteId)?.name || '')}</span>` : '<span class="muted">Off</span>'}</td>
         <td class="num">${fmtDur(workedBetween(s.id, from, to))}</td><td>${s.isAdmin ? '<span class="muted">—</span>' : issues ? `<span class="status st-expired">⚠ ${issues} issue${issues > 1 ? 's' : ''}</span>` : '<span class="status st-valid">✓ OK</span>'}</td>
-        <td>${mods ? `${done} / ${mods}` : '—'}</td><td><button class="btn btn-ghost btn-sm" data-action="staff-edit" data-id="${s.id}">Edit</button>${CLOUD ? ` <button class="btn btn-ghost btn-sm" data-action="send-reset" data-id="${s.id}" title="Email a password reset link">Reset password</button>` : ''}</td></tr>`;
+        <td>${mods ? `${done} / ${mods}` : '—'}</td><td>${s.onboarding && s.onboarding.status !== 'approved' ? `<button class="btn btn-sm ${s.onboarding.status === 'submitted' ? 'btn-gold' : 'btn-ghost'}" data-action="onb-review" data-id="${s.id}">${s.onboarding.status === 'submitted' ? 'Review onboarding' : 'Onboarding pending'}</button> ` : ''}<button class="btn btn-ghost btn-sm" data-action="staff-edit" data-id="${s.id}">Edit</button>${CLOUD ? ` <button class="btn btn-ghost btn-sm" data-action="send-reset" data-id="${s.id}" title="Email a password reset link">Reset password</button>` : ''}</td></tr>`;
     });
     return `<div class="hq-toolbar"><div class="muted">${db.staff.filter((s) => s.active).length} active staff</div><button class="btn btn-gold btn-sm" data-action="staff-new">${ic(I.plus, 16)}Add Staff Member</button></div>
       <section class="hq-panel">${hqTable(['Staff', 'Department', 'Contact', 'Now', 'Hours this week', 'Compliance', 'Training', ''], rows, 'No staff yet.')}</section>`;
