@@ -32,12 +32,15 @@ Deno.serve(async (req) => {
   const pdf = new Uint8Array(await req.arrayBuffer());
   if (pdf.length < 1000 || new TextDecoder().decode(pdf.slice(0, 5)) !== "%PDF-") return json({ error: "not a pdf" }, 400);
   const title = (req.headers.get("x-brief-title") || "VWG Intel brief").slice(0, 160);
+  // Where the brief applies (e.g. "london" = London grid + UK). Operators will later only see
+  // briefs for the area they're deployed in (Jack 2026-11-22).
+  const area = (req.headers.get("x-brief-area") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40) || null;
   const now = new Date();
   const path = `${now.toISOString().slice(0, 7)}/${now.toISOString().replace(/[:.]/g, "-")}.pdf`;
 
   const up = await admin.storage.from("briefs").upload(path, pdf, { contentType: "application/pdf", upsert: false });
   if (up.error) return json({ error: up.error.message }, 500);
-  const [b] = await sql`insert into public.briefs (title, path, size) values (${title}, ${path}, ${pdf.length}) returning id`;
+  const [b] = await sql`insert into public.briefs (title, path, size, area) values (${title}, ${path}, ${pdf.length}, ${area}) returning id`;
 
   // retention
   const old = await sql`delete from public.briefs where created_at < now() - make_interval(days => ${KEEP_DAYS}) returning path`;
