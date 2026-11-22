@@ -467,7 +467,8 @@
     if (s.status === 'offered' && !s.staffId) actions = `<button class="btn btn-gold btn-block" data-action="accept-shift" data-id="${s.id}">Accept Shift</button>`;
     else if (isMine && isToday && !e) actions = `<button class="btn btn-gold btn-block" data-action="clock-in" data-id="${s.id}">Clock In to this Shift</button>`;
     else if (isMine && e && e.shiftId === s.id) actions = `<button class="btn btn-red btn-block" data-action="clock-out">Clock Out</button>`;
-    if (isMine && s.date >= ymd(new Date()) && !(e && e.shiftId === s.id)) actions += `<button class="btn btn-ghost btn-block" data-action="release-shift" data-id="${s.id}" style="margin-top:10px">Offer Shift for Cover</button>`;
+    if (isMine && s.date >= ymd(new Date()) && !(e && e.shiftId === s.id) && !u.jobOnly) actions += `<button class="btn btn-ghost btn-block" data-action="release-shift" data-id="${s.id}" style="margin-top:10px">Offer Shift for Cover</button>`;
+    if (u.isAdmin) actions += `<button class="btn btn-gold btn-block" data-action="shift-edit" data-id="${s.id}" style="margin-top:10px">Edit times</button>`;
     return topbar(isMine || s.staffId ? 'My Roster Detail' : 'Offered Shift', { left: 'back' }) + `<div class="page white">
       <div class="section"><div class="body">
         <div class="d">${dayTitle(s.date)}${s.role ? ` · ${esc(ROLE_NAMES[s.role] || s.role)}` : ''}</div>
@@ -1556,7 +1557,8 @@
         const sh = db.shifts.find((x) => x.id === s.id);
         // A manager setting the hours confirms a "times confirmed daily" day (it then gets a clock-on reminder).
         const timesChanged = sh.start !== d.start || sh.end !== d.end;
-        Object.assign(sh, base, { date: d.date }); if (timesChanged) sh.timesTbc = false;
+        Object.assign(sh, base, { date: d.date });
+        if (timesChanged) { sh.timesTbc = false; sh.timesSetBy = 'manager'; sh.timesSetAt = new Date().toISOString(); }
       }
       save(); render(); toast('Shift saved');
     });

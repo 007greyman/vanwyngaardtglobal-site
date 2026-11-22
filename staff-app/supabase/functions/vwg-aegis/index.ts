@@ -142,8 +142,13 @@ async function jobPush(body: any) {
     // timesTbc: the day is booked but the hours are confirmed daily by the TL (suppliers' drivers).
     const data = { id, staffId: staff.id, siteId, date, start, end, role, timesTbc: s.timesTbc === true,
       notes: str(s.notes, 300), status: "confirmed", aegis: true };
+    // Hours a manager set in the Staff app (timesSetBy) win over a resend from Aegis.
     await sql`insert into public.records (collection, id, data) values ('shifts', ${id}, ${sql.json(data)})
-      on conflict (collection, id) do update set data = public.records.data || excluded.data`;
+      on conflict (collection, id) do update set data = case when public.records.data ? 'timesSetBy'
+        then public.records.data || excluded.data || jsonb_build_object('start', public.records.data->'start',
+               'end', public.records.data->'end', 'timesTbc', public.records.data->'timesTbc',
+               'timesSetBy', public.records.data->'timesSetBy')
+        else public.records.data || excluded.data end`;
   }
   const dropped = await sql`delete from public.records where collection = 'shifts' and data->>'siteId' = ${siteId}
     and (data->>'date')::date >= current_date and not (id = any(${ids})) returning id`;
