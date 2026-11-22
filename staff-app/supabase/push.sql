@@ -70,3 +70,8 @@ create policy push_own_insert on public.push_subscriptions for insert to authent
 create policy push_own_update on public.push_subscriptions for update to authenticated
   using (staff_id = public.my_staff_id())
   with check (staff_id = public.my_staff_id() and (public.is_admin() or topics <@ array['test']));
+
+-- Area each brief applies to ("london" = London grid + UK). Later: operators see only briefs for
+-- the area of the job they're currently deployed on.
+alter table public.briefs add column if not exists area text;
+create index if not exists briefs_area_idx on public.briefs (area, created_at desc);
