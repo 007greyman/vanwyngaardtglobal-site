@@ -826,6 +826,53 @@
     });
   }
 
+  // ---------- Phone alerts (Web Push) ----------
+  // Intel alerts and briefs pushed to this phone. Each alert is encrypted for this device only
+  // (Web Push, RFC 8291), so the push service in between can't read it. Sent by the Supabase
+  // function vwg-push; subscriptions live in push_subscriptions (own rows only, managers only for now).
+  const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const b64uToBytes = (s) => { const b = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
+  async function pushSub() { const reg = await navigator.serviceWorker.ready; return reg.pushManager.getSubscription(); }
+  function deviceLabel() {
+    const ua = navigator.userAgent;
+    return (/iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : 'Device') + ' · ' + new Date().toLocaleDateString('en-GB');
+  }
+  async function pushOn() {
+    if (!CONFIG.pushPublicKey) throw new Error('Alerts are not set up yet');
+    if (await Notification.requestPermission() !== 'granted') throw new Error('Allow notifications for VWG Staff in Settings, then try again');
+    const reg = await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBytes(CONFIG.pushPublicKey) });
+    const j = sub.toJSON();
+    const { error } = await cloud.sb.from('push_subscriptions').upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device: deviceLabel(), topics: ['intel', 'brief', 'test'] });
+    if (error) { await sub.unsubscribe().catch(() => {}); throw new Error(error.message); }
+  }
+  async function pushOff() {
+    const sub = await pushSub(); if (!sub) return;
+    await cloud.sb.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+    await sub.unsubscribe();
+  }
+  async function pushTest() {
+    const { data, error } = await cloud.sb.functions.invoke('vwg-push', { body: { topic: 'test', title: 'VWG Staff · test', body: 'Phone alerts are working on this device.' } });
+    if (error) throw new Error(error.message);
+    return data;
+  }
+  async function sheetPush() {
+    if (!pushSupported()) {
+      openSheet(`<h2>Phone alerts</h2><p class="small">${/iPhone|iPad/.test(navigator.userAgent) && !isStandalone()
+        ? 'On iPhone, alerts only work when VWG Staff is on your Home Screen. Tap the Share button, then <b>Add to Home Screen</b>, open VWG Staff from there and come back to this page.'
+        : 'This browser cannot receive push alerts. Use Safari on iPhone (from the Home Screen) or Chrome/Edge.'}</p>`);
+      return;
+    }
+    const on = !!(await pushSub()) && Notification.permission === 'granted';
+    openSheet(`<h2>Phone alerts</h2>
+      <p class="small">Serious items from the VWG Intel watch (marked UNVERIFIED) and the daily brief, sent straight to this device. Each alert is encrypted for this device only.</p>
+      <p><b>Status:</b> ${on ? 'On for this device' : 'Off for this device'}</p>
+      ${on ? `<button class="btn btn-gold btn-block" data-action="push-test">Send a test alert</button>
+              <button class="btn btn-block" style="margin-top:8px" data-action="push-off">Turn off on this device</button>`
+           : `<button class="btn btn-gold btn-block" data-action="push-on">Turn on alerts on this device</button>`}`);
+  }
+
   // ---------- Profile ----------
   function viewProfile() {
     const u = me();
@@ -842,6 +889,7 @@
       ${row('Mobile', 'phone', u.phone, 'type="tel" autocomplete="tel"')}
       ${row('Pin', 'pin', u.pin || '', 'inputmode="numeric" pattern="\\d{4}" maxlength="4"')}
       ${link('mydocs', 'My Documents')}${link('compliance', 'My Compliance')}${link('companycompliance', 'Company Compliance')}
+      ${CLOUD && u.isAdmin ? `<button type="button" class="pf-row" data-action="push-setup"><b>Phone alerts</b><span class="chev">${ic(I.right, 22, 1.6)}</span></button>` : ''}
       <div class="error" id="profile-error" style="padding:6px 12px 0"></div>
       <button class="btn btn-gold btn-block pf-save" type="submit">Save Changes</button>
       <button type="button" class="btn btn-block pf-logout" data-action="logout">Logout</button>
@@ -2062,6 +2110,10 @@
         alert(`Temporary password for ${s.name}:\n\n${temp}\n\nGive this to them and ask them to change it under My Profile.`);
         break;
       }
+      case 'push-setup': sheetPush().catch((e) => toast(e.message)); break;
+      case 'push-on': try { btn.disabled = true; await pushOn(); toast('Alerts on. Sending a test…'); await pushTest(); closeSheet(); } catch (e) { toast(e.message); btn.disabled = false; } break;
+      case 'push-test': try { const r = await pushTest(); toast(r && r.sent ? 'Test sent' : 'No device received it'); } catch (e) { toast(e.message); } break;
+      case 'push-off': try { await pushOff(); closeSheet(); toast('Alerts off on this device'); } catch (e) { toast(e.message); } break;
       case 'logout': if (CLOUD) { cloudSignOut(); break; } db.session = null; save(); ui.drawer = false; ui.stack = []; ui.route = CONFIG.startPage; render(); break;
     }
   });
