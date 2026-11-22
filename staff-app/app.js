@@ -957,7 +957,7 @@
 
   // Privacy: blank the screen while the app is in the background, so the phone's app-switcher
   // preview never shows a brief, a run sheet or a message.
-  const privacyOn = () => document.body.classList.add('privacy-cover');
+  const privacyOn = () => { if (!canScreenshot()) document.body.classList.add('privacy-cover'); };
   const privacyOff = () => document.body.classList.remove('privacy-cover');
   document.addEventListener('visibilitychange', () => (document.hidden ? privacyOn() : privacyOff()));
   window.addEventListener('pagehide', privacyOn);
@@ -1257,8 +1257,15 @@
   }
   // Every page carries the viewer's name and the time it was opened, so any screenshot or photo of
   // it traces back to that person (web apps cannot block screenshots).
+  // Managers and team leaders may screenshot freely (Jack 2026-11-22): no watermark, no cover.
+  function canScreenshot() {
+    const u = me(); if (!u) return false;
+    if (u.isAdmin) return true;
+    const today = ymd(new Date());
+    return db.shifts.some((x) => x.staffId === u.id && x.role === 'TL' && x.date >= today);
+  }
   function watermark(canvas) {
-    const u = me(); if (!u) return;
+    const u = me(); if (!u || canScreenshot()) return;
     const ctx = canvas.getContext('2d'); const now = new Date();
     const text = `${u.name} · ${dmy(now)} ${fmtTime(now)} · VWG CONFIDENTIAL`;
     const size = Math.max(14, Math.round(canvas.width / 30));
