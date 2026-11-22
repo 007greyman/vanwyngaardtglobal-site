@@ -1,3 +1,5 @@
+/* Copyright (c) 2026 Jack van Wyngaardt. All rights reserved.
+ * Proprietary and confidential. Licensed to Van Wyngaardt Global Ltd. See LICENSE.txt. */
 // vwg-reminders: "clock on" reminders. Called every 5 minutes by pg_cron (header x-cron-key, a
 // value kept only in private.push_config). For every rostered shift starting within the next 30
 // minutes (Jack: 30 min before) whose person is not clocked in, it sends one push alert to that person's devices.

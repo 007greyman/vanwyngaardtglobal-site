@@ -1,3 +1,5 @@
+/* Copyright (c) 2026 Jack van Wyngaardt. All rights reserved.
+ * Proprietary and confidential. Licensed to Van Wyngaardt Global Ltd. See LICENSE.txt. */
 /* Van Wyngaardt Global — Staff app
  * Single-page, offline-first. Data is kept in this device's localStorage and, when
  * Supabase is configured in config.js, shared live between all staff phones.
@@ -26,7 +28,8 @@
   }, window.VWG_CONFIG || {}, { version: 'v1.2.0(3)' });
   const CLOUD = !!(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
   // Shown at the foot of the menu so anyone can tell which version their phone is running.
-  const BUILD = 22;
+  const COPYRIGHT = '© 2026 Jack van Wyngaardt. All rights reserved. Licensed to Van Wyngaardt Global Ltd.';
+  const BUILD = 23;
   // hq.html sets VWG_HQ: the desktop console for managers. It keeps its own sign-in and
   // saved copy, so it never signs out or mixes with the staff app in the same browser.
   const HQ = !!window.VWG_HQ;
@@ -345,7 +348,7 @@
           ${u.isAdmin ? `<button class="menu-item ${ui.route === 'admin' ? 'on' : ''}" data-nav="admin"><span>Admin Dashboard</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
           <button class="menu-item danger" data-action="logout"><span>Sign Out</span></button>
         </div>
-        <div class="menu-version">${CONFIG.version} - ${esc(CONFIG.region)} · build ${BUILD}</div>
+        <div class="menu-version">${CONFIG.version} - ${esc(CONFIG.region)} · build ${BUILD}<br>${COPYRIGHT}</div>
       </nav>
     </div></div>`;
   }
@@ -378,7 +381,7 @@
       <button class="forgot" data-action="forgot">Forgot Password</button>
       <div class="or">OR</div>
       <button class="btn-pill" data-action="domain-login">Log In with Domain</button>
-      <div class="version">${CONFIG.version}</div>
+      <div class="version">${CONFIG.version}</div><div class="version copyright">${COPYRIGHT}</div>
       ${CLOUD ? '' : `<div class="demo-hint">Demo: <b>jack@${CONFIG.domain}</b> (admin) or <b>emma@${CONFIG.domain}</b> · password <b>Password1</b></div>`}
     </div>`;
   }
@@ -2117,6 +2120,7 @@
         <nav class="hq-nav">${hqNav()}</nav>
         <div class="hq-me"><div class="avatar" style="background:${u.color}">${u.photo ? `<img src="${u.photo}" alt="">` : initials(u.name)}</div><div><b>${esc(u.name)}</b><span>${esc(u.role)}</span></div></div>
         <div class="hq-side-foot"><a href="index.html" target="_blank" rel="noopener">Open staff app</a><button data-action="logout">Sign out</button></div>
+        <div class="hq-copyright">${COPYRIGHT}</div>
       </aside>
       <main class="hq-main">
         <header class="hq-top">
@@ -2277,6 +2281,7 @@
       <button type="button" class="forgot" data-action="forgot">Forgot Password</button>
       ${CLOUD ? '' : '<div class="demo-hint">Demo: <b>jack@${CONFIG.domain}</b> / <b>Password1</b></div>'}
       <a class="hq-login-alt" href="index.html">Staff member? Open the staff app</a>
+      <div class="hq-copyright">${COPYRIGHT}</div>
     </form></div>`;
   }
 

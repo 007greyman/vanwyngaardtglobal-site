@@ -1,3 +1,5 @@
+/* Copyright (c) 2026 Jack van Wyngaardt. All rights reserved.
+ * Proprietary and confidential. Licensed to Van Wyngaardt Global Ltd. See LICENSE.txt. */
 // vwg-push: sends VWG phone alerts (Web Push) to devices in public.push_subscriptions.
 //
 // Two callers:

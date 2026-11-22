@@ -1,3 +1,5 @@
+-- Copyright (c) 2026 Jack van Wyngaardt. All rights reserved.
+-- Proprietary and confidential. Licensed to Van Wyngaardt Global Ltd. See LICENSE.txt.
 -- VWG Staff app: shared database for Supabase.
 -- Run this once in your Supabase project: Dashboard > SQL Editor > New query > paste > Run.
 -- It is safe to run again after an update.

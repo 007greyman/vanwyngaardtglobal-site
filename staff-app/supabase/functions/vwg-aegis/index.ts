@@ -1,3 +1,5 @@
+/* Copyright (c) 2026 Jack van Wyngaardt. All rights reserved.
+ * Proprietary and confidential. Licensed to Van Wyngaardt Global Ltd. See LICENSE.txt. */
 // vwg-aegis: the only door between Aegis (VWG's encrypted desktop ops console) and the Staff app.
 //
 // Called from Aegis's main process with header `x-vwg-aegis-key: <secret>` (own secret, separate

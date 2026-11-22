@@ -1,3 +1,5 @@
+-- Copyright (c) 2026 Jack van Wyngaardt. All rights reserved.
+-- Proprietary and confidential. Licensed to Van Wyngaardt Global Ltd. See LICENSE.txt.
 -- VWG Staff: need-to-know access for operators (2026-11-22). Run after schema.sql. Safe to run again.
 --
 -- Before this, any signed-in staff member could read every staff record, site and shift.

@@ -1,0 +1,36 @@
+COPYRIGHT AND LICENCE NOTICE
+
+Copyright (c) 2026 Jack van Wyngaardt. All rights reserved.
+
+This software ("VWG Staff app and HQ Console") includes its source code, database design and access rules,
+server functions, screens, workflows, document templates and documentation (together
+the "Software"). The Software and its design, structure and documentation are the
+original work of Jack van Wyngaardt and are protected by copyright under the
+Copyright, Designs and Patents Act 1988 (UK) and international copyright law.
+
+The Software is proprietary. It is NOT open source. Being able to see this code (for
+example in a public repository or in a web browser) does not give anyone a licence
+to use, copy or adapt it.
+
+Licence to Van Wyngaardt Global Limited (company number 15062540): a non-exclusive,
+non-transferable, revocable licence to use the Software for its own business
+operations only. The licence may be withdrawn by the copyright holder at any time.
+
+Without the copyright holder's prior written permission, no person or company may:
+  1. copy, share, sell, rent, lend, sub-license or otherwise pass on the Software or
+     any part of it;
+  2. install, host or run it for any business other than Van Wyngaardt Global Limited;
+  3. modify, rebrand or rename it, or create derivative works or products from it,
+     including for a security or close-protection company of their own;
+  4. reverse engineer it, or use it to build or set up a similar system for anyone else;
+  5. remove or change this notice or the copyright headers in the files.
+
+Operators, drivers, suppliers and clients who are given access to an app built from
+the Software (for example the VWG Staff app) receive permission to use that app for
+VWG work only, and no rights in the Software itself.
+
+Third-party components used alongside the Software (for example open-source libraries,
+frameworks, fonts, map tiles and hosting services) remain under their own licences
+and are not claimed here.
+
+Unauthorised copying, use or distribution may result in legal action.
