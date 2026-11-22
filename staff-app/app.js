@@ -404,6 +404,14 @@
         </div>
       </div>
       <div class="pad">
+        ${(() => { // clock-on prompt from 30 minutes before a rostered shift until it ends
+          if (e) return '';
+          const soon = db.shifts.filter((x) => x.staffId === u.id && x.date === ymd(now) && !x.timesTbc && x.status !== 'cancelled')
+            .find((x) => { const st = shiftStart(x); return now >= st - 30 * 60000 && now < shiftEnd(x); });
+          return soon ? `<div class="card clock-prompt"><b>${now >= shiftStart(soon) ? 'Your shift has started' : 'Your shift starts at ' + esc(soon.start)}</b>
+            <div class="small">${esc(siteById(soon.siteId)?.customer || siteById(soon.siteId)?.name || '')} · clock on now</div>
+            <button class="btn btn-red btn-block" style="margin-top:10px" data-action="clock-in" data-id="${soon.id}">CLOCK IN</button></div>` : '';
+        })()}
         ${due ? `<button class="card" data-nav="welfare" style="width:100%;text-align:left;border-left:5px solid var(--amber)"><b>Welfare check due</b><div class="small muted">Tap to confirm you are OK</div></button>` : ''}
         <div class="stats">
           <div class="stat"><b>${hours(workedBetween(u.id, wk, addDays(wk, 7))).toFixed(1)}</b><span>Hours this week</span></div>
@@ -1544,7 +1552,12 @@
       if (!db.sites.length) return 'Add a site first';
       const base = { staffId: d.staffId || null, siteId: d.siteId, start: d.start, end: d.end, notes: d.notes.trim(), status: d.staffId ? d.status : 'offered' };
       if (isNew) { const n = Number(d.repeat) || 1; for (let i = 0; i < n; i++) db.shifts.push({ id: uid(), ...base, date: ymd(addDays(parseYmd(d.date), i)) }); }
-      else Object.assign(db.shifts.find((x) => x.id === s.id), base, { date: d.date });
+      else {
+        const sh = db.shifts.find((x) => x.id === s.id);
+        // A manager setting the hours confirms a "times confirmed daily" day (it then gets a clock-on reminder).
+        const timesChanged = sh.start !== d.start || sh.end !== d.end;
+        Object.assign(sh, base, { date: d.date }); if (timesChanged) sh.timesTbc = false;
+      }
       save(); render(); toast('Shift saved');
     });
   }
