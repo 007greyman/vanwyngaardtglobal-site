@@ -993,7 +993,7 @@
       nda: !!(o.nda && o.nda.signature && o.nda.name),
     };
   }
-  function viewOnboarding() {
+  function viewStaffOnboarding() {
     const u = me(); const st = onbSteps(u); const submitted = u.onboarding.status === 'submitted';
     const tick = (ok) => `<span class="onb-tick ${ok ? 'ok' : ''}">${ok ? '✓' : ''}</span>`;
     const step = (n, ok, title, sub, action) => `<button class="onb-step" ${submitted ? 'disabled' : `data-action="${action}"`}>
@@ -2244,7 +2244,7 @@
     if (!db.onboarded) { app.innerHTML = viewOnboarding(); bindSwipe(); return; }
     const u = me();
     if (!u || !u.active) { db.session = null; app.innerHTML = viewLogin(); bindLogin(); return; }
-    if (needsOnboarding(u)) { app.innerHTML = viewOnboarding(); return; }
+    if (needsOnboarding(u)) { app.innerHTML = viewStaffOnboarding(); return; }
     if (u.jobOnly && JOB_ONLY_HIDDEN.includes(ui.route)) ui.route = 'home';
     if (ui.route === 'admin' && !u.isAdmin) ui.route = 'home';
     if (!ui.landed) { ui.landed = true; if (ui.route === CONFIG.startPage && !u.isAdmin && isDriver()) ui.route = 'runsheet'; }
