@@ -75,3 +75,38 @@ create policy push_own_update on public.push_subscriptions for update to authent
 -- the area of the job they're currently deployed on.
 alter table public.briefs add column if not exists area text;
 create index if not exists briefs_area_idx on public.briefs (area, created_at desc);
+
+-- ---------- Aegis link (2026-11-22) ----------
+-- Job briefs from Aegis: private bucket jobdocs/<siteId>/..., readable by managers and the
+-- operators currently deployed on that site. Intel briefs readable by operators deployed in the
+-- brief's area. Operators may subscribe to brief alerts. (Need-to-know record access:
+-- need_to_know.sql. Function: functions/vwg-aegis.)
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('jobdocs', 'jobdocs', false, 26214400, array['application/pdf'])
+on conflict (id) do update set public = false;
+drop policy if exists jobdocs_read on storage.objects;
+create policy jobdocs_read on storage.objects for select to authenticated
+  using (bucket_id = 'jobdocs' and (public.is_admin() or split_part(name, '/', 1) = any(public.my_site_ids())));
+create or replace function public.my_areas() returns text[]
+language sql stable security definer set search_path = public as $$
+  select coalesce(array_agg(distinct lower(r.data->>'area')), '{}') from public.records r
+  where r.collection = 'sites' and r.id = any(public.my_site_ids()) and r.data->>'area' is not null
+$$;
+revoke execute on function public.my_areas() from public, anon;
+grant execute on function public.my_areas() to authenticated;
+drop policy if exists briefs_admin_select on public.briefs;
+drop policy if exists briefs_select on public.briefs;
+create policy briefs_select on public.briefs for select to authenticated
+  using (public.is_admin() or (public.my_staff_id() is not null and area = any(public.my_areas())));
+drop policy if exists briefs_admin_read on storage.objects;
+drop policy if exists briefs_read on storage.objects;
+create policy briefs_read on storage.objects for select to authenticated
+  using (bucket_id = 'briefs' and (public.is_admin()
+    or exists (select 1 from public.briefs b where b.path = name and b.area = any(public.my_areas()))));
+drop policy if exists push_own_insert on public.push_subscriptions;
+drop policy if exists push_own_update on public.push_subscriptions;
+create policy push_own_insert on public.push_subscriptions for insert to authenticated
+  with check (staff_id = public.my_staff_id() and (public.is_admin() or topics <@ array['brief', 'test']));
+create policy push_own_update on public.push_subscriptions for update to authenticated
+  using (staff_id = public.my_staff_id())
+  with check (staff_id = public.my_staff_id() and (public.is_admin() or topics <@ array['brief', 'test']));
