@@ -124,7 +124,7 @@
   // ---------- Data ----------
   const emptyDb = () => ({
     version: 2, staff: [], sites: [], shifts: [], entries: [], leave: [], incidents: [], occurrences: [],
-    documents: [], docReads: [], messages: [], register: [], welfare: [], trainingDone: [], resetRequests: [], training: [], support: [], staffDocs: [], onboarding: [],
+    documents: [], docReads: [], messages: [], register: [], welfare: [], trainingDone: [], resetRequests: [], training: [], support: [], staffDocs: [], onboarding: [], receipts: [], positions: [],
     session: null, onboarded: false,
   });
   let db = load();
@@ -297,7 +297,7 @@
   function topbar(title, { left = 'menu', right = '' } = {}) {
     const l = left === 'back'
       ? `<button class="tb-btn" data-action="back">${ic(I.back, 24)}Back</button>`
-      : `<button class="tb-btn" data-action="open-drawer" aria-label="Menu">${ic(I.menu, 26)}</button>`;
+      : `<button class="tb-btn tb-menu" data-action="open-drawer" aria-label="Menu">${ic(I.menu, 26)}${me() && attention().total ? '<span class="menu-dot"></span>' : ''}</button>`;
     return `<header class="topbar"><div class="topbar-inner">${l}<h1${title.length > 22 ? ' style="font-size:16px"' : ''}>${esc(title)}</h1><div class="tb-right">${right}</div></div></header>`;
   }
   const refreshBtn = `<button class="tb-btn" data-action="refresh" aria-label="Refresh">${ic(I.refresh, 24, 2.4)}</button>`;
@@ -337,9 +337,9 @@
           <div class="head-status" id="head-status">${e ? `On shift · <span id="drawer-elapsed">${fmtClock(entryWorkedMs(e))}</span>` : esc(u.name)}</div>
         </div>
         <div class="menu">
-          ${MENU.filter(([r]) => !(u.jobOnly && JOB_ONLY_HIDDEN.includes(r))).map(([r, label]) => `<button class="menu-item ${ui.route === r ? 'on' : ''}" data-nav="${r}"><span>${label}</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>`).join('')}
+          ${MENU.filter(([r]) => !(u.jobOnly && JOB_ONLY_HIDDEN.includes(r))).map(([r, label]) => `<button class="menu-item ${ui.route === r ? 'on' : ''}" data-nav="${r}"><span>${label}${dot(attention()[DOT_FOR[r]] || 0)}</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>`).join('')}
           ${db.sites.some((x) => (x.movements || []).length) ? `<button class="menu-item ${ui.route === 'runsheet' ? 'on' : ''}" data-nav="runsheet"><span>Run Sheet</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
-          ${CLOUD ? `<button class="menu-item ${ui.route === 'briefs' ? 'on' : ''}" data-nav="briefs"><span>Intel Briefs</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
+          ${CLOUD ? `<button class="menu-item ${ui.route === 'briefs' ? 'on' : ''}" data-nav="briefs"><span>Intel Briefs${dot(attention().briefs)}</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
           ${u.isAdmin ? `<button class="menu-item ${ui.route === 'admin' ? 'on' : ''}" data-nav="admin"><span>Admin Dashboard</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
           <button class="menu-item danger" data-action="logout"><span>Sign Out</span></button>
         </div>
@@ -389,8 +389,9 @@
     const wk = startOfWeek(now);
     const offered = db.shifts.filter((s) => s.status === 'offered' && s.date >= ymd(now)).length;
     const due = welfareDue(u.id);
-    const status = !e ? 'Clocked out' : onBreak(e) ? 'On break' : `On shift${e.siteId ? ' · ' + esc(siteById(e.siteId)?.name || '') : ''}`;
-    const tile = (r, icon, label) => `<button class="tile" data-nav="${r}"><span class="ti">${ic(icon, 22)}</span>${label}</button>`;
+    const status = (!e ? 'Clocked out' : onBreak(e) ? 'On break' : `On shift${e.siteId ? ' · ' + esc(siteById(e.siteId)?.name || '') : ''}`) + (e && CLOUD ? ` · <span class="loc-on">📍 Location ${tracking() ? 'on' : 'starting…'}</span>` : '');
+    const att = attention();
+    const tile = (r, icon, label) => `<button class="tile" data-nav="${r}"><span class="ti">${ic(icon, 22)}${att[DOT_FOR[r]] ? '<span class="tile-dot"></span>' : ''}</span>${label}</button>`;
     return topbar('Dashboard') + `<div class="page">
       <div class="dash-hero backdrop-art">
         <div class="dash-time" id="live-time">${fmtTime(now)}</div>
@@ -701,7 +702,7 @@
     const icon = (t) => t.kind === 'dm' ? avatar(t.staff) : `<div class="avatar" style="background:var(--brand);color:var(--gold-light)">${ic(t.kind === 'site' ? I.shield : I.chat, 20)}</div>`;
     return topbar('Team Message', { right: refreshBtn }) + `<div class="page white">
       <div class="searchbar flush">${ic(I.search, 22)}<input id="msg-q" value="${esc(ui.msgQ)}" autocomplete="off" aria-label="Search people, sites or messages"></div>
-      <div id="msg-list">${list.map((t) => `<button class="thread" data-nav="thread" data-id="${t.id}">${icon(t)}<div class="item-main"><div class="item-title">${esc(t.name)}</div>
+      <div id="msg-list">${list.map((t) => `<button class="thread" data-nav="thread" data-id="${t.id}">${icon(t)}<div class="item-main"><div class="item-title">${esc(t.name)}${dot(attention().unread[t.id] || 0)}</div>
         <div class="item-sub">${t.last ? esc((t.last.staffId === u.id ? 'You: ' : '') + t.last.text).slice(0, 60) : 'No messages yet'}</div></div>
         <div class="small muted">${t.last ? fmtTime(new Date(t.last.time)) : ''}</div></button>`).join('')}</div>
     </div>`;
@@ -709,8 +710,9 @@
   function viewThread() {
     const u = me(); const id = ui.params.id || 'all';
     const list = db.messages.filter((m) => (m.thread || 'all') === id).sort((a, b) => a.time.localeCompare(b.time)).slice(-200);
+    if (list.length) { markSeen('t:' + id, list[list.length - 1].time); markRead(id, list[list.length - 1].time); }
     return topbar(threadName(id), { left: 'back' }) + `<div class="page"><div class="chat" id="chat">
-      ${list.length ? list.map((m) => { const s = staffById(m.staffId); const mine = m.staffId === u.id; return `<div class="bubble ${mine ? 'me' : ''}">${mine || id.startsWith('dm:') ? '' : `<div class="who">${esc(s?.name || 'Former staff')}</div>`}${esc(m.text)}<div class="when">${fmtStamp(m.time)}</div></div>`; }).join('') : '<div class="empty">No messages yet. Say hello!</div>'}
+      ${list.length ? list.map((m) => { const s = staffById(m.staffId); const mine = m.staffId === u.id; return `<div class="bubble ${mine ? 'me' : ''}" data-tick="${mine ? 1 : 0}">${mine || id.startsWith('dm:') ? '' : `<div class="who">${esc(s?.name || 'Former staff')}</div>`}${esc(m.text)}<div class="when">${fmtStamp(m.time)}${mine ? ' ' + tickFor(m) : ''}</div></div>`; }).join('') : '<div class="empty">No messages yet. Say hello!</div>'}
     </div></div>
     <form class="composer" id="composer"><input name="text" placeholder="Type a message" autocomplete="off" aria-label="Message"><button type="submit" aria-label="Send">${ic(I.send, 20)}</button></form>`;
   }
@@ -796,6 +798,7 @@
         : `📞 Call us: ${tel(CONFIG.supportPhone)}`}`;
   }
   function viewSupport() {
+    markSeen('support');
     const u = me(); const team = supportTeam();
     const msgs = db.support.filter((m) => m.staffId === u.id).sort((a, b) => a.time.localeCompare(b.time));
     const faces = (size) => `<div class="faces">${team.map((s) => `<span class="face" style="width:${size}px;height:${size}px;background:${s.color}">${s.photo ? `<img src="${s.photo}" alt="">` : initials(s.name)}</span>`).join('') || `<span class="face" style="width:${size}px;height:${size}px">${ic(I.user, size / 2)}</span>`}</div>`;
@@ -834,6 +837,132 @@
       save(); render(); toast('Reply sent');
     });
   }
+
+  // ---------- Read receipts (WhatsApp-style ticks) ----------
+  // One record per person per conversation (rc-<staffId>-<thread>) with the newest message
+  // delivered to their phone and the newest one they have read.
+  function myReceipt(thread) {
+    const id = 'rc-' + db.session + '-' + thread;
+    let r = db.receipts.find((x) => x.id === id);
+    if (!r) { r = { id, staffId: db.session, thread, deliveredAt: '', readAt: '' }; db.receipts.push(r); }
+    return r;
+  }
+  // Called after each draw: marks as delivered everything that has reached this phone.
+  function updateDelivered() {
+    const u = me(); if (!u || !CLOUD) return;
+    let changed = false;
+    const newest = {};
+    db.messages.forEach((m) => { if (m.staffId !== u.id) { const t = m.thread || 'all'; if (!newest[t] || m.time > newest[t]) newest[t] = m.time; } });
+    Object.entries(newest).forEach(([t, time]) => { const r = myReceipt(t); if ((r.deliveredAt || '') < time) { r.deliveredAt = time; changed = true; } });
+    if (changed) save();
+  }
+  function markRead(thread, time) {
+    if (!CLOUD || !time) return;
+    const r = myReceipt(thread); let changed = false;
+    if ((r.readAt || '') < time) { r.readAt = time; changed = true; }
+    if ((r.deliveredAt || '') < time) { r.deliveredAt = time; changed = true; }
+    if (changed) setTimeout(save, 0);
+  }
+  function recipientsOf(thread) {
+    if (thread.startsWith('dm:')) return thread.slice(3).split(':').filter((x) => x !== db.session);
+    return db.staff.filter((x) => x.active && x.id !== db.session).map((x) => x.id);
+  }
+  function tickFor(m) {
+    if (!CLOUD) return '';
+    const synced = cloud.synced.messages && cloud.synced.messages[m.id];
+    if (!synced) return '<span class="ticks" title="Sending">🕓</span>';
+    const t = m.thread || 'all';
+    const who = recipientsOf(t);
+    const rc = (id) => db.receipts.find((x) => x.id === 'rc-' + id + '-' + t) || {};
+    const all = (field) => who.length > 0 && who.every((id) => (rc(id)[field] || '') >= m.time);
+    if (all('readAt')) return '<span class="ticks read" title="Read">✓✓</span>';
+    if (all('deliveredAt')) return '<span class="ticks" title="Delivered">✓✓</span>';
+    return '<span class="ticks" title="Sent">✓</span>';
+  }
+
+  // ---------- Location while clocked in ----------
+  // While someone is clocked in and the app is open, their position is saved every few minutes
+  // (or after moving ~150 m) to positions/pos-<entryId>, which only they and managers can see.
+  // It stops at clock-out. Phones pause web apps in the background, so this is best effort.
+  let geoWatch = null; let lastPoint = null;
+  function distM(a, b) { const R = 6371000, r = Math.PI / 180; const dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); }
+  function startTracking() {
+    if (geoWatch !== null || !navigator.geolocation || !CLOUD) return;
+    const e = openEntry(db.session); if (!e) return;
+    geoWatch = navigator.geolocation.watchPosition((p) => {
+      const e2 = openEntry(db.session); if (!e2) { stopTracking(); return; }
+      const pt = { t: new Date().toISOString(), lat: +p.coords.latitude.toFixed(5), lng: +p.coords.longitude.toFixed(5), acc: Math.round(p.coords.accuracy) };
+      if (lastPoint && Date.now() - Date.parse(lastPoint.t) < 180000 && distM(lastPoint, pt) < 150) return;
+      lastPoint = pt;
+      const id = 'pos-' + e2.id;
+      let rec = db.positions.find((x) => x.id === id);
+      if (!rec) { rec = { id, staffId: db.session, entryId: e2.id, points: [] }; db.positions.push(rec); }
+      rec.points.push(pt); if (rec.points.length > 600) rec.points.splice(0, rec.points.length - 600);
+      rec.last = pt; save();
+    }, () => { /* permission refused or no fix: clock-in already flags missing location */ }, { enableHighAccuracy: true, maximumAge: 60000, timeout: 30000 });
+    requestRender();
+  }
+  function stopTracking() { if (geoWatch !== null) { navigator.geolocation.clearWatch(geoWatch); geoWatch = null; lastPoint = null; } }
+  const tracking = () => geoWatch !== null;
+
+  // ---------- Red dots: what needs this person's attention ----------
+  // "Seen" times are kept on this device per person (a convenience, not a record).
+  const seenKey = () => STORE_KEY + '-seen-' + db.session;
+  function seen() { try { return JSON.parse(localStorage.getItem(seenKey()) || '{}'); } catch (e) { return {}; } }
+  function markSeen(key, time = new Date().toISOString()) {
+    try { const x = seen(); if ((x[key] || '') >= time) return; x[key] = time; localStorage.setItem(seenKey(), JSON.stringify(x)); } catch (e) { /* private mode */ }
+  }
+  let attCache = null; // worked out once per screen draw
+  function attention() {
+    if (attCache) return attCache;
+    const u = me(); if (!u) return { total: 0, unread: {} };
+    const sn = seen();
+    const threads = new Set(threadsFor(u).map((t) => t.id));
+    const unread = {};
+    db.messages.forEach((m) => {
+      const t = m.thread || 'all';
+      if (!threads.has(t) || m.staffId === u.id) return;
+      if (m.time > (sn['t:' + t] || u.onboarding?.approvedAt || '')) unread[t] = (unread[t] || 0) + 1;
+    });
+    const messages = Object.values(unread).reduce((a, b) => a + b, 0);
+    const docs = u.isAdmin ? 0 : db.documents.filter((d) => d.requireSign && !db.docReads.some((r) => r.docId === d.id && r.staffId === u.id)).length;
+    const support = db.support.filter((m) => m.staffId === u.id && m.from === 'support' && m.time > (sn.support || '')).length;
+    const briefs = ui.latestBrief && ui.latestBrief > (sn.briefs || '') ? 1 : 0;
+    const welfare = welfareDue(u.id) ? 1 : 0;
+    attCache = { messages, unread, docs, support, briefs, welfare, total: messages + docs + support + briefs + welfare };
+    return attCache;
+  }
+  const DOT_FOR = { messages: 'messages', docs: 'docs', support: 'support', briefs: 'briefs', welfare: 'welfare' };
+  const dot = (n) => (n ? `<span class="dot-badge">${n > 9 ? '9+' : n}</span>` : '');
+  function updateAppBadge(total) {
+    try { if ('setAppBadge' in navigator) { total ? navigator.setAppBadge(total) : navigator.clearAppBadge(); } } catch (e) { /* not supported */ }
+  }
+  async function loadLatestBrief() {
+    if (!CLOUD || !cloud.sb) return;
+    try { const { data } = await cloud.sb.from('briefs').select('created_at').order('created_at', { ascending: false }).limit(1);
+      const t = data && data[0] ? data[0].created_at : null; if (t !== ui.latestBrief) { ui.latestBrief = t; requestRender(); } } catch (e) { /* offline */ }
+  }
+
+  // In-app alert tone + vibration when a push arrives while the app is open.
+  let audioCtx = null;
+  document.addEventListener('pointerdown', () => { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch (e) { /* no audio */ } }, { once: false, passive: true });
+  function alertTone() {
+    try {
+      if (navigator.vibrate) navigator.vibrate([250, 120, 250, 120, 400]);
+      if (!audioCtx) return;
+      const t0 = audioCtx.currentTime;
+      [[880, 0], [660, 0.22], [880, 0.44], [660, 0.66]].forEach(([f, at]) => {
+        const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
+        o.type = 'sine'; o.frequency.value = f; o.connect(g); g.connect(audioCtx.destination);
+        g.gain.setValueAtTime(0.0001, t0 + at); g.gain.exponentialRampToValueAtTime(0.35, t0 + at + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + 0.2);
+        o.start(t0 + at); o.stop(t0 + at + 0.21);
+      });
+    } catch (e) { /* ignore */ }
+  }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'push') { alertTone(); toast(e.data.title || 'New alert'); if (e.data.tag === 'brief') loadLatestBrief(); }
+  });
 
   // ---------- Onboarding (job-only staff, e.g. a supplier's driver) ----------
   // Until a manager approves, the person sees only this: their details, their documents, the
@@ -874,7 +1003,8 @@
         <h2 style="margin:6px 0 4px">Hi ${esc(u.name.split(' ')[0])}</h2>
         ${submitted
           ? `<div class="onb-done"><b>Thank you, your onboarding has been submitted.</b><p>Van Wyngaardt Global will check your documents and confirm. Your task appears in the app once you are approved, from 24 hours before it starts.</p><p class="small muted">Submitted ${fmtStamp(u.onboarding.submittedAt || new Date().toISOString())}</p></div>`
-          : `<p class="muted">Before your task appears in the app, please complete these steps. It takes about 5 minutes. Your documents are seen only by Van Wyngaardt Global.</p>`}
+          : `<p class="muted">Before your task appears in the app, please complete these steps. It takes about 5 minutes. Your documents are seen only by Van Wyngaardt Global.</p>
+          <p class="small muted">Good to know: while you are clocked in, the app shares your location with VWG managers (it stops when you clock out). Keep the app open on your phone during your shift.</p>`}
         ${step(1, st.details, 'Your details', 'Name, address, SIA licence number and DVLA check code', 'onb-details')}
         ${step(2, st.docs, 'Your documents', `${ONB_DOCS.filter(([k]) => onbDoc(k)).length} of ${ONB_DOCS.length} uploaded: SIA, first aid, driving licence, photo`, 'onb-docs')}
         ${step(3, st.nda, 'Confidentiality agreement', 'Read and sign the VWG contractor NDA', 'onb-nda')}
@@ -1071,6 +1201,7 @@
     if (!CLOUD) return viewHome();
     if (ui.briefs === undefined) { ui.briefs = null; loadBriefs(); }
     const list = ui.briefs;
+    if (Array.isArray(list) && list[0]) { markSeen('briefs', list[0].created_at); ui.latestBrief = ui.latestBrief || list[0].created_at; }
     const body = list === null ? '<div class="empty">Loading…</div>'
       : list.error ? `<div class="empty">Couldn't load briefs: ${esc(list.error)}</div>`
       : !list.length ? `<div class="empty">${me().isAdmin ? 'No briefs yet. The next one arrives at 07:00.' : 'No intel brief for you right now. Briefs appear here for the area of the job you are deployed on.'}</div>`
@@ -1498,7 +1629,8 @@
     const entry = { id: uid(), staffId: u.id, shiftId: shift?.id || null, siteId: siteId || shift?.siteId || null, clockIn: new Date().toISOString(), clockOut: null, breaks: [], geo: null, method };
     db.entries.push(entry);
     addOccurrence(`Clocked in${method !== 'app' ? ' via ' + method.toUpperCase() : ''}`, 'clock', entry.siteId);
-    save(); ui.drawer = false; render(); toast(`Clocked in at ${fmtTime(new Date())}`);
+    save(); ui.drawer = false; render(); toast(`Clocked in at ${fmtTime(new Date())} · location on while you are clocked in`);
+    startTracking();
     const geo = await getGeo(0);
     if (!openEntry(u.id) || entry.clockOut) return;
     if (geo) entry.geo = geo; else { entry.noGeo = true; toast('Location not shared: turn on location for this app'); }
@@ -1513,7 +1645,8 @@
     e.clockOut = now;
     if (approval) e.approval = { ...approval, time: now };
     addOccurrence(`Clocked out · ${fmtDur(entryWorkedMs(e))} worked${approval ? ` · approved by ${approval.name}` : ''}`, 'clock', e.siteId);
-    save(); ui.drawer = false; render(); toast(`Clocked out · ${fmtDur(entryWorkedMs(e))} worked`);
+    stopTracking();
+    save(); ui.drawer = false; render(); toast(`Clocked out · ${fmtDur(entryWorkedMs(e))} worked · location off`);
   }
   function sheetClockOut() {
     const e = openEntry(db.session); if (!e) return;
@@ -1598,7 +1731,7 @@
   // `records` table (see supabase/schema.sql), which also enforces who may change what.
   // The copy in localStorage keeps the app usable offline; unsent changes are retried.
   const SYNCED = ['staff', 'sites', 'shifts', 'entries', 'leave', 'incidents', 'occurrences', 'documents',
-    'docReads', 'messages', 'register', 'welfare', 'trainingDone', 'training', 'support', 'staffDocs', 'onboarding'];
+    'docReads', 'messages', 'register', 'welfare', 'trainingDone', 'training', 'support', 'staffDocs', 'onboarding', 'receipts', 'positions'];
   const SYNCED_KEY = STORE_KEY + '-synced';
   const cloud = { sb: null, synced: {}, pushTimer: null, pushing: null, renderWanted: false, channel: null };
   try { cloud.synced = JSON.parse(localStorage.getItem(SYNCED_KEY) || '{}'); } catch (e) { cloud.synced = {}; }
@@ -1914,7 +2047,7 @@
     const liveRows = t.live.map((e) => {
       const s = staffById(e.staffId); const site = siteById(e.siteId); const lw = lastWelfare(e.staffId);
       const state = onBreak(e) ? '<span class="status st-pending">On break</span>' : welfareDue(e.staffId) ? '<span class="status st-high">⚠ Welfare overdue</span>' : '<span class="status st-on-site">✓ On site</span>';
-      return `<tr><td>${who(s)}</td><td>${esc(site?.name || '—')}<span class="sub">${esc(site?.customer || '')}</span></td><td class="nw">${fmtTime(new Date(e.clockIn))}<span class="sub">${e.method !== 'app' ? e.method.toUpperCase() : 'App'}</span></td><td class="nw">${geoBadge(e) || '<span class="muted small">Waiting…</span>'}</td><td class="num">${fmtDur(entryWorkedMs(e))}</td><td>${lw ? fmtTime(new Date(lw.time)) : '<span class="muted">None yet</span>'}</td><td>${state}</td><td>${telLink(s)}</td></tr>`;
+      return `<tr><td>${who(s)}</td><td>${esc(site?.name || '—')}<span class="sub">${esc(site?.customer || '')}</span></td><td class="nw">${fmtTime(new Date(e.clockIn))}<span class="sub">${e.method !== 'app' ? e.method.toUpperCase() : 'App'}</span></td><td class="nw">${geoBadge(e) || '<span class="muted small">Waiting…</span>'}${(() => { const pos = db.positions.find((x) => x.entryId === e.id); return pos && pos.last ? `<span class="sub">Last ${fmtTime(new Date(pos.last.t))} · ${mapLink(pos.last)}</span>` : ''; })()}</td><td class="num">${fmtDur(entryWorkedMs(e))}</td><td>${lw ? fmtTime(new Date(lw.time)) : '<span class="muted">None yet</span>'}</td><td>${state}</td><td>${telLink(s)}</td></tr>`;
     });
     const missRows = [...t.late, ...t.due].map((s) => {
       const p = staffById(s.staffId); const site = siteById(s.siteId); const mins = Math.round((t.now - shiftStart(s)) / 60000);
@@ -2064,6 +2197,7 @@
   const VIEWS = { hq: viewHq, 'hq-roster': viewHqRoster, 'hq-staff': viewHqStaff, 'hq-sites': viewHqSites, 'hq-requests': viewHqRequests, 'hq-reports': viewHqReports, home: viewHome, shifts: viewShifts, offered: viewOffered, shift: viewShift, occurrence: viewOccurrence, leave: viewLeave, forms: viewForms, docs: viewDocs, doc: viewDoc, messages: viewMessages, thread: viewThread, register: viewRegister, welfare: viewWelfare, support: viewSupport, profile: viewProfile, briefs: viewBriefs, runsheet: viewRunsheet, training: viewTraining, module: viewModule, mydocs: viewMyDocs, compliance: viewCompliance, companycompliance: viewCompanyCompliance, timesheet: viewTimesheet, admin: viewAdmin };
   function render() {
     clearInterval(ticker);
+    attCache = null;
     if (HQ) { renderHQ(); return; }
     const app = $('#app');
     if (!db.onboarded) { app.innerHTML = viewOnboarding(); bindSwipe(); return; }
@@ -2076,6 +2210,10 @@
     // Deep link from a "brief ready" phone alert: index.html?open=briefs
     if (ui.openParam === undefined) { ui.openParam = new URLSearchParams(location.search).get('open') || ''; if (ui.openParam === 'briefs' && CLOUD) { ui.route = 'briefs'; ui.briefs = undefined; history.replaceState(null, '', location.pathname); } }
     app.innerHTML = (VIEWS[ui.route] || viewHome)() + (ui.drawer ? drawer() : '');
+    updateAppBadge(attention().total);
+    setTimeout(updateDelivered, 0);
+    if (openEntry(db.session)) startTracking(); else stopTracking();
+    if (CLOUD && ui.latestBrief === undefined) { ui.latestBrief = null; loadLatestBrief(); }
     bindPage();
     ticker = setInterval(tick, 1000);
   }

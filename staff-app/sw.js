@@ -1,6 +1,6 @@
 // Offline cache for the app shell. Only the app's own files and the Supabase
 // library are cached; database requests always go to the network.
-const CACHE = 'vwg-staff-v14';
+const CACHE = 'vwg-staff-v16';
 const ASSETS = ['./', './index.html', './hq.html', './styles.css', './config.js', './app.js', './logo.png', './icon-192.png', './apple-touch-icon.png', './favicon.png', './manifest.webmanifest', './hq.webmanifest', './forms/VWG-CON-02-Contractor-NDA.pdf'];
 
 self.addEventListener('install', (e) => {
@@ -39,10 +39,19 @@ self.addEventListener('fetch', (e) => {
 self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || 'VWG', {
-    body: d.body || '', tag: d.tag || undefined, renotify: !!d.tag,
-    icon: './icon-192.png', badge: './icon-192.png', data: { url: d.url || './index.html' },
-  }));
+  const important = /intel|onboarding/i.test(d.title || '') || d.tag === 'brief';
+  e.waitUntil(Promise.all([
+    self.registration.showNotification(d.title || 'VWG', {
+      body: d.body || '', tag: d.tag || undefined, renotify: !!d.tag, silent: false,
+      requireInteraction: important, vibrate: [250, 120, 250, 120, 400],
+      icon: './icon-192.png', badge: './icon-192.png', data: { url: d.url || './index.html' },
+    }),
+    // home-screen icon badge (iOS 16.4+ web apps, Android Chrome)
+    self.navigator && self.navigator.setAppBadge ? self.navigator.setAppBadge().catch(() => {}) : Promise.resolve(),
+    // if the app is open, it plays its alert tone
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) =>
+      list.forEach((c) => c.postMessage({ type: 'push', title: d.title, tag: d.tag }))),
+  ]));
 });
 
 self.addEventListener('notificationclick', (e) => {

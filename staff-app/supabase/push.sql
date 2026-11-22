@@ -121,3 +121,8 @@ create policy push_own_update on public.push_subscriptions for update to authent
 -- my_site_ids() returns nothing until onboarding is approved and, for job-only staff, until
 -- 24 h before their first shift on a site; collection 'onboarding' (own rows + managers);
 -- records_guard lets staff move their onboarding only from pending to submitted.
+
+-- ---------- Receipts + positions (2026-11-22) ----------
+-- Applied as migration message_receipts_and_positions: collection 'receipts' (rc-<staffId>-<thread>,
+-- visible to everyone in that conversation) and 'positions' (pos-<entryId>, live location while
+-- clocked in; own rows + managers only). Both writable by their owner.
