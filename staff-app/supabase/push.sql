@@ -110,3 +110,8 @@ create policy push_own_insert on public.push_subscriptions for insert to authent
 create policy push_own_update on public.push_subscriptions for update to authenticated
   using (staff_id = public.my_staff_id())
   with check (staff_id = public.my_staff_id() and (public.is_admin() or topics <@ array['brief', 'test']));
+
+-- ---------- Drivers (2026-11-22) ----------
+-- Roles per site from shifts; site documents can target drivers (audience 'driver') or the rest of
+-- the team (audience 'team'). Applied as migration driver_audience; see need_to_know.sql for the base
+-- policy. Drivers (SDD) can be job-only (not fully vetted) and see only that job.

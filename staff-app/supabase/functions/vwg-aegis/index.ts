@@ -7,10 +7,13 @@
 //                   Full list of CLEARED operators. Creates/updates their staff records (they can
 //                   then create a password in the app); Aegis operators missing from the list are
 //                   switched off (active=false).
-//   job.push        {aegisId,codename,area,siteName,address,city,notes,shifts:[{operatorAegisId,date,start,end}],
-//                    brief:{filename,base64}?}
+//   job.push        {aegisId,codename,area,siteName,address,city,notes,
+//                    shifts:[{operatorAegisId,date,start,end,role,timesTbc}], movements:[{date,time,from,to,notes}],
+//                    brief:{base64}?, driverBrief:{base64}?}
 //                   One job as a site (named by CODENAME, never the client) + shifts per operator +
-//                   the job brief PDF in the private bucket jobdocs/<siteId>/.
+//                   the job brief PDF in the private bucket jobdocs/<siteId>/. Role SDD = driver: drivers
+//                   get the driver brief (audience 'driver'), everyone else the job brief (audience
+//                   'team' when there is a driver brief). Movements = the run sheet, shown to the team.
 //   job.close       {aegisId}: removes upcoming shifts and the job brief; the site drops out of view.
 // Need-to-know access is enforced by the database policies (need_to_know.sql), not here.
 import postgres from "npm:postgres@3.4.5";
@@ -45,9 +48,13 @@ async function authorised(req: Request) {
   return diff === 0;
 }
 
-// The staff record id for an Aegis operator: an existing record with the same email wins,
+// The staff record id for an Aegis operator: a record already linked to that Aegis operator
+// wins (e.g. a manager who also works jobs, linked by hand), then one with the same email,
 // so nobody gets a second account.
 async function staffIdFor(aegisId: string, email: string) {
+  const [linked] = await sql`select id from public.records where collection = 'staff'
+    and data->>'aegisId' = ${aegisId} order by (data->>'isAdmin')::boolean desc nulls last limit 1`;
+  if (linked) return linked.id;
   const [byEmail] = await sql`select id from public.records where collection = 'staff'
     and lower(data->>'email') = lower(${email}) limit 1`;
   return byEmail?.id ?? `aegis-op-${aegisId}`;
@@ -70,12 +77,14 @@ async function operatorsSync(body: any) {
     if (old && old.data.isAdmin) continue; // never touch a manager's record from Aegis
     const fields = {
       name, email, phone: str(o.phone, 40), role: "Close Protection Officer", dept: "Close Protection",
-      empNo: `OP-${aegisId}`, isAdmin: false, active: true, aegisId,
+      empNo: `OP-${aegisId}`, isAdmin: false, active: true, aegisId, jobOnly: o.jobOnly === true,
       licence: str(o.siaLicence, 40),
       compliance: {
         ...(old?.data?.compliance || {}),
         sia: { ref: str(o.siaLicence, 40), date: isDate(str(o.siaExpiry, 10)) ? str(o.siaExpiry, 10) : "" },
-        vetting: { ref: "Cleared (VWG)", date: isDate(str(o.vettingExpiry, 10)) ? str(o.vettingExpiry, 10) : "" },
+        vetting: o.jobOnly === true
+          ? { ref: "Job-only access (not fully vetted)", date: "" }
+          : { ref: "Cleared (VWG)", date: isDate(str(o.vettingExpiry, 10)) ? str(o.vettingExpiry, 10) : "" },
       },
     };
     const base = { id, color: COLORS[i % COLORS.length], photo: null, emergency: "", address: "", leaveAllowance: 0,
@@ -104,6 +113,9 @@ async function jobPush(body: any) {
     address: str(body.address, 200), city: str(body.city, 80), region: "", country: str(body.country, 60),
     code: codename.toUpperCase().replace(/[^A-Z0-9]+/g, "-").slice(0, 20), lat: null, lng: null,
     notes: str(body.notes, 1000), contacts: [], aegis: true,
+    movements: (Array.isArray(body.movements) ? body.movements.slice(0, 300) : [])
+      .map((m: any) => ({ date: str(m.date, 10), time: str(m.time, 5), from: str(m.from, 160), to: str(m.to, 160), notes: str(m.notes, 300) }))
+      .filter((m: any) => isDate(m.date) && (m.time === "" || isTime(m.time)) && (m.from || m.to)),
   };
   await sql`insert into public.records (collection, id, data) values ('sites', ${siteId}, ${sql.json(site)})
     on conflict (collection, id) do update set data = public.records.data || excluded.data`;
@@ -121,30 +133,50 @@ async function jobPush(body: any) {
     if (!staff) { missing++; continue; }
     const id = `aegis-sh-${aegisId}-${opId}-${date}`;
     ids.push(id);
-    const data = { id, staffId: staff.id, siteId, date, start, end, notes: str(s.notes, 300), status: "confirmed", aegis: true };
+    const role = /^(TL|CPO|SDD|RST|Medic|Ops)$/.test(str(s.role, 8)) ? str(s.role, 8) : "CPO";
+    // timesTbc: the day is booked but the hours are confirmed daily by the TL (suppliers' drivers).
+    const data = { id, staffId: staff.id, siteId, date, start, end, role, timesTbc: s.timesTbc === true,
+      notes: str(s.notes, 300), status: "confirmed", aegis: true };
     await sql`insert into public.records (collection, id, data) values ('shifts', ${id}, ${sql.json(data)})
       on conflict (collection, id) do update set data = public.records.data || excluded.data`;
   }
   const dropped = await sql`delete from public.records where collection = 'shifts' and data->>'siteId' = ${siteId}
     and (data->>'date')::date >= current_date and not (id = any(${ids})) returning id`;
 
-  // job brief PDF
-  let brief = false;
-  if (body.brief && typeof body.brief.base64 === "string") {
-    const bytes = Uint8Array.from(atob(body.brief.base64), (c) => c.charCodeAt(0));
-    if (bytes.length < 500 || new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") return { error: "brief is not a PDF" };
-    const path = `${siteId}/job-brief.pdf`;
+  // job brief (team) and driver brief (drivers only)
+  const hasDriverBrief = !!(body.driverBrief && typeof body.driverBrief.base64 === "string");
+  const put = async (kind: "job" | "driver", file: any, audience: string, title: string, text: string) => {
+    const bytes = Uint8Array.from(atob(file.base64), (c) => c.charCodeAt(0));
+    if (bytes.length < 500 || new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") throw new Error(`${kind} brief is not a PDF`);
+    const path = `${siteId}/${kind}-brief.pdf`;
     const up = await admin.storage.from("jobdocs").upload(path, bytes, { contentType: "application/pdf", upsert: true });
-    if (up.error) return { error: up.error.message };
-    const doc = { id: `aegis-doc-${aegisId}`, title: `Job brief – ${codename}`, scope: "site", refId: siteId,
-      requireSign: true, date: new Date().toISOString(), aegis: true,
-      body: "Your job brief for this assignment. Open the PDF below and sign to confirm you have read it. Do not share, screenshot or forward it.",
-      file: { bucket: "jobdocs", path, name: "Job brief.pdf" } };
+    if (up.error) throw new Error(up.error.message);
+    const doc = { id: `aegis-${kind === "job" ? "doc" : "drv"}-${aegisId}`, title, scope: "site", refId: siteId, audience,
+      requireSign: true, date: new Date().toISOString(), aegis: true, body: text,
+      file: { bucket: "jobdocs", path, name: kind === "job" ? "Job brief.pdf" : "Driver brief.pdf" } };
     await sql`insert into public.records (collection, id, data) values ('documents', ${doc.id}, ${sql.json(doc)})
       on conflict (collection, id) do update set data = excluded.data`;
-    brief = true;
+  };
+  let brief = false, driverBrief = false;
+  try {
+    if (body.brief && typeof body.brief.base64 === "string") {
+      await put("job", body.brief, hasDriverBrief ? "team" : "all", `Job brief – ${codename}`,
+        "Your job brief for this assignment. Open the PDF below and sign to confirm you have read it. Do not share, screenshot or forward it.");
+      brief = true;
+    }
+    if (hasDriverBrief) {
+      await put("driver", body.driverBrief, "driver", `Driver brief – ${codename}`,
+        "Your driver brief: pick-ups, drop-offs, timings and vehicle requirements. Your run sheet is under Run Sheet in the menu. Do not share, screenshot or forward it.");
+      driverBrief = true;
+    } else {
+      await sql`delete from public.records where collection = 'documents' and id = ${"aegis-drv-" + aegisId}`;
+      await admin.storage.from("jobdocs").remove([`${siteId}/driver-brief.pdf`]);
+    }
+  } catch (e) {
+    return { error: (e as Error).message };
   }
-  return { siteId, shifts: ids.length, removedShifts: dropped.length, operatorsNotInApp: missing, brief };
+  return { siteId, shifts: ids.length, removedShifts: dropped.length, operatorsNotInApp: missing, brief, driverBrief,
+    movements: site.movements.length };
 }
 
 async function jobClose(body: any) {
@@ -153,8 +185,8 @@ async function jobClose(body: any) {
   const siteId = `aegis-job-${aegisId}`;
   const dropped = await sql`delete from public.records where collection = 'shifts' and data->>'siteId' = ${siteId}
     and (data->>'date')::date >= current_date returning id`;
-  await sql`delete from public.records where collection = 'documents' and id = ${"aegis-doc-" + aegisId}`;
-  await admin.storage.from("jobdocs").remove([`${siteId}/job-brief.pdf`]);
+  await sql`delete from public.records where collection = 'documents' and id in (${"aegis-doc-" + aegisId}, ${"aegis-drv-" + aegisId})`;
+  await admin.storage.from("jobdocs").remove([`${siteId}/job-brief.pdf`, `${siteId}/driver-brief.pdf`]);
   await sql`update public.records set data = data || '{"closed": true}'::jsonb where collection = 'sites' and id = ${siteId}`;
   return { siteId, removedShifts: dropped.length };
 }
