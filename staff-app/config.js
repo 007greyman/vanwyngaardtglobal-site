@@ -22,4 +22,7 @@ window.VWG_CONFIG = {
   // Never put the service_role / secret key here.
   supabaseUrl: 'https://surarxooallaxdmrndma.supabase.co',
   supabaseAnonKey: 'sb_publishable_prAUY0c4axInxhEyLidx7g_QSepylfc', // publishable key: safe to be public
+
+  // Phone alerts (Web Push): public VAPID key. Public by design; the private half is only in the database.
+  pushPublicKey: 'BLB-YoyRRhF9LOiYrsLtuA_RBdPaORergSsKpvVZCw_Q3G1zRruBiZZQkMzJwlC20c_VvUTgxm8TLWf7dhbOixA',
 };

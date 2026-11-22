@@ -143,3 +143,16 @@ cd staff-app
 python3 -m http.server 8080
 # open http://localhost:8080
 ```
+
+## Phone alerts (managers)
+
+**My Profile → Phone alerts → Turn on alerts on this device** sends VWG Intel alerts (serious items
+from the watched intel groups, marked UNVERIFIED) and the daily brief straight to that phone or computer.
+On iPhone it only works from the Home Screen copy of the app (Share → Add to Home Screen, iOS 16.4+).
+
+How it works: the device's push subscription is saved in `push_subscriptions` (each person sees only
+their own devices; managers only for now). The Supabase Edge Function `vwg-push`
+(`supabase/functions/vwg-push`) encrypts each alert for each device (Web Push, RFC 8291), so the push
+service in between only carries ciphertext. VWG Intel calls it with a sender secret; a signed-in manager
+can send only a test to their own devices. The sending keys are in the database schema `private`
+(not reachable through the API) and are never in this repository. Database setup: `supabase/push.sql`.
