@@ -74,12 +74,13 @@ Deno.serve(async (req) => {
     if (!onlyStaff || topic !== "test") return json({ error: "forbidden" }, 403);
   }
 
-  // Intel goes to active managers only; briefs/tests to any active staff subscribed to them.
+  // Intel and briefs go to active managers only (Jack 2026-11-22: managers only for now);
+  // tests to the caller's own devices.
   const subs = await sql`select s.endpoint, s.p256dh, s.auth from public.push_subscriptions s
     join public.records r on r.collection = 'staff' and r.id = s.staff_id
     where ${topic} = any(s.topics)
       and coalesce((r.data->>'active')::boolean, true)
-      and (${topic} <> 'intel' or coalesce((r.data->>'isAdmin')::boolean, false))
+      and (${topic} = 'test' or coalesce((r.data->>'isAdmin')::boolean, false))
       and (${onlyStaff}::text is null or s.staff_id = ${onlyStaff})`;
 
   const payload = JSON.stringify({

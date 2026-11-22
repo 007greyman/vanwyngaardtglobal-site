@@ -43,3 +43,30 @@ create schema if not exists private;
 revoke all on schema private from public, anon, authenticated;
 create table if not exists private.push_config (key text primary key, value text not null);
 revoke all on private.push_config from public, anon, authenticated;
+
+-- ---------- Intel Briefs (daily VWG Intel brief PDFs, managers only) ----------
+-- Private bucket; files are uploaded by the vwg-brief function and opened with signed links.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('briefs', 'briefs', false, 26214400, array['application/pdf'])
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+drop policy if exists briefs_admin_read on storage.objects;
+create policy briefs_admin_read on storage.objects for select to authenticated
+  using (bucket_id = 'briefs' and public.is_admin());
+
+create table if not exists public.briefs (
+  id uuid primary key default gen_random_uuid(), title text not null, path text not null unique,
+  size int, created_at timestamptz not null default now());
+alter table public.briefs enable row level security;
+revoke all on public.briefs from anon;
+grant select on public.briefs to authenticated;
+drop policy if exists briefs_admin_select on public.briefs;
+create policy briefs_admin_select on public.briefs for select to authenticated using (public.is_admin());
+
+-- Managers only for now (2026-11-22): staff may only subscribe to tests.
+drop policy if exists push_own_insert on public.push_subscriptions;
+drop policy if exists push_own_update on public.push_subscriptions;
+create policy push_own_insert on public.push_subscriptions for insert to authenticated
+  with check (staff_id = public.my_staff_id() and (public.is_admin() or topics <@ array['test']));
+create policy push_own_update on public.push_subscriptions for update to authenticated
+  using (staff_id = public.my_staff_id())
+  with check (staff_id = public.my_staff_id() and (public.is_admin() or topics <@ array['test']));

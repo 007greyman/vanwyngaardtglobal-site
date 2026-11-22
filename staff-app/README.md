@@ -150,6 +150,10 @@ python3 -m http.server 8080
 from the watched intel groups, marked UNVERIFIED) and the daily brief straight to that phone or computer.
 On iPhone it only works from the Home Screen copy of the app (Share → Add to Home Screen, iOS 16.4+).
 
+**Intel Briefs** (side menu, managers only) lists the daily VWG Intel brief PDFs. VWG Intel uploads
+each one at 07:00 through the `vwg-brief` function into the private storage bucket `briefs`; the app
+opens them with a 10-minute signed link and the "brief ready" alert opens this page. Kept 30 days.
+
 How it works: the device's push subscription is saved in `push_subscriptions` (each person sees only
 their own devices; managers only for now). The Supabase Edge Function `vwg-push`
 (`supabase/functions/vwg-push`) encrypts each alert for each device (Web Push, RFC 8291), so the push
