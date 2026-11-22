@@ -26,7 +26,7 @@
   }, window.VWG_CONFIG || {}, { version: 'v1.2.0(3)' });
   const CLOUD = !!(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
   // Shown at the foot of the menu so anyone can tell which version their phone is running.
-  const BUILD = 21;
+  const BUILD = 22;
   // hq.html sets VWG_HQ: the desktop console for managers. It keeps its own sign-in and
   // saved copy, so it never signs out or mixes with the staff app in the same browser.
   const HQ = !!window.VWG_HQ;
@@ -955,6 +955,16 @@
       const t = data && data[0] ? data[0].created_at : null; if (t !== ui.latestBrief) { ui.latestBrief = t; requestRender(); } } catch (e) { /* offline */ }
   }
 
+  // Privacy: blank the screen while the app is in the background, so the phone's app-switcher
+  // preview never shows a brief, a run sheet or a message.
+  const privacyOn = () => document.body.classList.add('privacy-cover');
+  const privacyOff = () => document.body.classList.remove('privacy-cover');
+  document.addEventListener('visibilitychange', () => (document.hidden ? privacyOn() : privacyOff()));
+  window.addEventListener('pagehide', privacyOn);
+  window.addEventListener('pageshow', privacyOff);
+  window.addEventListener('blur', () => { if (!HQ && ['pdf', 'runsheet', 'doc', 'thread', 'briefs'].includes(ui.route)) privacyOn(); });
+  window.addEventListener('focus', privacyOff);
+
   // In-app alert tone + vibration when a push arrives while the app is open.
   let audioCtx = null;
   document.addEventListener('pointerdown', () => { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch (e) { /* no audio */ } }, { once: false, passive: true });
@@ -1245,6 +1255,28 @@
       <div class="pdf-mark">VAN WYNGAARDT GLOBAL · CONFIDENTIAL · DO NOT SHARE OR SCREENSHOT</div>
       <div id="pdf-pages"><div class="empty">Opening…</div></div></div>`;
   }
+  // Every page carries the viewer's name and the time it was opened, so any screenshot or photo of
+  // it traces back to that person (web apps cannot block screenshots).
+  function watermark(canvas) {
+    const u = me(); if (!u) return;
+    const ctx = canvas.getContext('2d'); const now = new Date();
+    const text = `${u.name} · ${dmy(now)} ${fmtTime(now)} · VWG CONFIDENTIAL`;
+    const size = Math.max(14, Math.round(canvas.width / 30));
+    ctx.save();
+    ctx.font = `600 ${size}px Manrope, Arial, sans-serif`;
+    ctx.fillStyle = 'rgba(200, 30, 30, 0.16)';
+    ctx.translate(canvas.width / 2, canvas.height / 2); ctx.rotate(-Math.PI / 6);
+    const step = size * 5.5; const span = Math.hypot(canvas.width, canvas.height);
+    const w = ctx.measureText(text).width + size * 3;
+    for (let y = -span / 2; y < span / 2; y += step) {
+      for (let x = -span / 2 - ((y / step) % 2 ? w / 2 : 0); x < span / 2; x += w) ctx.fillText(text, x, y);
+    }
+    ctx.restore();
+    // a clear line along the foot of each page as well
+    ctx.save(); ctx.font = `600 ${Math.round(size * 0.7)}px Manrope, Arial, sans-serif`; ctx.fillStyle = 'rgba(160, 20, 20, 0.55)';
+    ctx.textAlign = 'center'; ctx.fillText(`Issued to ${u.name} · ${dmy(now)} ${fmtTime(now)} · do not share`, canvas.width / 2, canvas.height - size * 0.6);
+    ctx.restore();
+  }
   async function renderPdf(bucket, path) {
     const box = document.getElementById('pdf-pages'); if (!box || box.dataset.path === path) return;
     box.dataset.path = path;
@@ -1262,6 +1294,7 @@
         const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height; c.className = 'pdf-canvas';
         box.appendChild(c);
         await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+        watermark(c);
       }
     } catch (e) {
       box.dataset.path = '';
