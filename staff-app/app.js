@@ -25,6 +25,8 @@
     supabaseAnonKey: '',
   }, window.VWG_CONFIG || {}, { version: 'v1.2.0(3)' });
   const CLOUD = !!(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
+  // Shown at the foot of the menu so anyone can tell which version their phone is running.
+  const BUILD = 21;
   // hq.html sets VWG_HQ: the desktop console for managers. It keeps its own sign-in and
   // saved copy, so it never signs out or mixes with the staff app in the same browser.
   const HQ = !!window.VWG_HQ;
@@ -343,7 +345,7 @@
           ${u.isAdmin ? `<button class="menu-item ${ui.route === 'admin' ? 'on' : ''}" data-nav="admin"><span>Admin Dashboard</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
           <button class="menu-item danger" data-action="logout"><span>Sign Out</span></button>
         </div>
-        <div class="menu-version">${CONFIG.version} - ${esc(CONFIG.region)}</div>
+        <div class="menu-version">${CONFIG.version} - ${esc(CONFIG.region)} · build ${BUILD}</div>
       </nav>
     </div></div>`;
   }
