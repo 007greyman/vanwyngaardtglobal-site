@@ -115,3 +115,9 @@ create policy push_own_update on public.push_subscriptions for update to authent
 -- Roles per site from shifts; site documents can target drivers (audience 'driver') or the rest of
 -- the team (audience 'team'). Applied as migration driver_audience; see need_to_know.sql for the base
 -- policy. Drivers (SDD) can be job-only (not fully vetted) and see only that job.
+
+-- ---------- Onboarding + 24-hour window (2026-11-22) ----------
+-- Applied as migrations onboarding_gate and job_only_24h_window: my_onboarded(), my_job_only(),
+-- my_site_ids() returns nothing until onboarding is approved and, for job-only staff, until
+-- 24 h before their first shift on a site; collection 'onboarding' (own rows + managers);
+-- records_guard lets staff move their onboarding only from pending to submitted.

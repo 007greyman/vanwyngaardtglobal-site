@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
   let msg: { topic?: string; title?: string; body?: string; url?: string; tag?: string; area?: string };
   try { msg = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   const topic = String(msg.topic || "");
-  if (!/^(intel|brief|test)$/.test(topic)) return json({ error: "unknown topic" }, 400);
+  if (!/^(intel|brief|test|onboarding)$/.test(topic)) return json({ error: "unknown topic" }, 400);
 
   const c = await config();
   const key = req.headers.get("x-vwg-push-key");
@@ -71,7 +71,16 @@ Deno.serve(async (req) => {
     if (!sameHex(await sha256hex(key), c.send_secret_sha256)) return json({ error: "forbidden" }, 403);
   } else {
     onlyStaff = await callerStaffId(req);
-    if (!onlyStaff || topic !== "test") return json({ error: "forbidden" }, 403);
+    if (!onlyStaff || (topic !== "test" && topic !== "onboarding")) return json({ error: "forbidden" }, 403);
+  }
+  // A staff member's "I've submitted my onboarding" goes to the managers, with text set here
+  // (never the caller's), and only if their onboarding really is submitted.
+  if (topic === "onboarding" && onlyStaff) {
+    const [me] = await sql`select data->>'name' as name, data->'onboarding'->>'status' as st from public.records
+      where collection = 'staff' and id = ${onlyStaff}`;
+    if (!me || me.st !== "submitted") return json({ error: "nothing submitted" }, 400);
+    msg = { title: "VWG Staff · onboarding submitted", body: `${me.name} has uploaded their documents and signed the NDA. Review and approve in the Staff app.`, url: "./index.html", tag: `onb-${onlyStaff}` };
+    onlyStaff = null;
   }
 
   // Intel goes to active managers only. A brief goes to managers and to operators deployed
@@ -82,13 +91,18 @@ Deno.serve(async (req) => {
     join public.records r on r.collection = 'staff' and r.id = s.staff_id
     where ${topic} = any(s.topics)
       and coalesce((r.data->>'active')::boolean, true)
-      and (${topic} = 'test' or coalesce((r.data->>'isAdmin')::boolean, false)
+      and ((${topic} = 'test') or coalesce((r.data->>'isAdmin')::boolean, false)
            or (${topic} = 'brief' and ${area}::text is not null and exists (
                 select 1 from public.records sh join public.records si
                   on si.collection = 'sites' and si.id = sh.data->>'siteId'
                 where sh.collection = 'shifts' and sh.owner = r.id
                   and (sh.data->>'date')::date >= current_date - 1
-                  and lower(si.data->>'area') = ${area})))
+                  and lower(si.data->>'area') = ${area}
+                  -- onboarding approved, and job-only people only within 24 h of the shift
+                  and coalesce(r.data->'onboarding'->>'status', 'approved') = 'approved'
+                  and (not coalesce((r.data->>'jobOnly')::boolean, false)
+                       or now() >= ((sh.data->>'date') || ' ' || coalesce(nullif(sh.data->>'start', ''), '00:00'))::timestamp
+                                   at time zone 'Europe/London' - interval '24 hours'))))
       and (${onlyStaff}::text is null or s.staff_id = ${onlyStaff})`;
 
   const payload = JSON.stringify({

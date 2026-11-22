@@ -124,7 +124,7 @@
   // ---------- Data ----------
   const emptyDb = () => ({
     version: 2, staff: [], sites: [], shifts: [], entries: [], leave: [], incidents: [], occurrences: [],
-    documents: [], docReads: [], messages: [], register: [], welfare: [], trainingDone: [], resetRequests: [], training: [], support: [], staffDocs: [],
+    documents: [], docReads: [], messages: [], register: [], welfare: [], trainingDone: [], resetRequests: [], training: [], support: [], staffDocs: [], onboarding: [],
     session: null, onboarded: false,
   });
   let db = load();
@@ -317,6 +317,8 @@
     ['register', 'Electronic Sign On Register'], ['welfare', 'Welfare Check'], ['support', 'VWG Support'],
     ['profile', 'My Profile'], ['training', 'Training Module'], ['home', 'Dashboard'], ['timesheet', 'My Timesheet'],
   ];
+  // Job-only people (a supplier's driver on one task) get operator and driver functions only.
+  const JOB_ONLY_HIDDEN = ['offered', 'leave', 'timesheet'];
   function drawer() {
     const u = me(); const e = openEntry(u.id);
     return `<div class="drawer-wrap"><div class="drawer-inner">
@@ -335,7 +337,7 @@
           <div class="head-status" id="head-status">${e ? `On shift · <span id="drawer-elapsed">${fmtClock(entryWorkedMs(e))}</span>` : esc(u.name)}</div>
         </div>
         <div class="menu">
-          ${MENU.map(([r, label]) => `<button class="menu-item ${ui.route === r ? 'on' : ''}" data-nav="${r}"><span>${label}</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>`).join('')}
+          ${MENU.filter(([r]) => !(u.jobOnly && JOB_ONLY_HIDDEN.includes(r))).map(([r, label]) => `<button class="menu-item ${ui.route === r ? 'on' : ''}" data-nav="${r}"><span>${label}</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>`).join('')}
           ${db.sites.some((x) => (x.movements || []).length) ? `<button class="menu-item ${ui.route === 'runsheet' ? 'on' : ''}" data-nav="runsheet"><span>Run Sheet</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
           ${CLOUD ? `<button class="menu-item ${ui.route === 'briefs' ? 'on' : ''}" data-nav="briefs"><span>Intel Briefs</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
           ${u.isAdmin ? `<button class="menu-item ${ui.route === 'admin' ? 'on' : ''}" data-nav="admin"><span>Admin Dashboard</span><span class="chev" style="flex:0">${ic(I.right, 22)}</span></button>` : ''}
@@ -405,7 +407,7 @@
         <div class="stats">
           <div class="stat"><b>${hours(workedBetween(u.id, wk, addDays(wk, 7))).toFixed(1)}</b><span>Hours this week</span></div>
           <div class="stat"><b>${db.shifts.filter((s) => s.staffId === u.id && s.date >= ymd(wk) && s.date < ymd(addDays(wk, 7))).length}</b><span>Shifts this week</span></div>
-          <div class="stat"><b>${offered}</b><span>Offered shifts</span></div>
+          ${u.jobOnly ? `<div class="stat"><b>${legsFor(ymd(now)).length}</b><span>Movements today</span></div>` : `<div class="stat"><b>${offered}</b><span>Offered shifts</span></div>`}
         </div>
         ${today ? `<div class="small muted" style="margin:4px 4px 6px">TODAY</div>${shiftCard(today)}` : ''}
         ${legsFor(ymd(now)).length ? `<button class="card" data-nav="runsheet" style="width:100%;text-align:left;border-left:5px solid var(--gold)"><b>Today's run sheet</b><div class="small muted">${legsFor(ymd(now)).length} movement(s) · tap for navigation</div></button>` : ''}
@@ -414,7 +416,7 @@
           ${tile('messages', I.chat, 'Team Message')}${tile('welfare', I.heart, 'Welfare Check')}${tile('register', I.user, 'Sign On Register')}
         </div>
         <div class="small muted" style="margin:4px 4px 6px">UPCOMING</div>
-        ${next.length ? next.map(shiftCard).join('') : '<div class="empty">No upcoming shifts</div>'}
+        ${next.length ? next.map(shiftCard).join('') : `<div class="empty">${u.jobOnly ? 'Your task appears here 24 hours before it starts.' : 'No upcoming shifts'}</div>`}
       </div></div>`;
   }
 
@@ -833,6 +835,139 @@
     });
   }
 
+  // ---------- Onboarding (job-only staff, e.g. a supplier's driver) ----------
+  // Until a manager approves, the person sees only this: their details, their documents, the
+  // contractor NDA to sign, and Submit. The database hides every job until approval (and, for
+  // job-only people, until 24 hours before their first shift).
+  const ONB_DOCS = [
+    ['sia', 'SIA licence (front of the card)'],
+    ['firstaid', 'First aid certificate (FREC 3 or equivalent)'],
+    ['dl-front', 'Driving licence (front)'],
+    ['dl-back', 'Driving licence (back)'],
+    ['photo', 'Head-and-shoulders photo (plain background, no sunglasses)'],
+  ];
+  const NDA_URL = 'forms/VWG-CON-02-Contractor-NDA.pdf';
+  const NDA_VERSION = 'VWG-CON-02 v1.0 (November 2026)';
+  const needsOnboarding = (u) => CLOUD && u && !u.isAdmin && u.onboarding && u.onboarding.status !== 'approved';
+  const myOnb = () => db.onboarding.find((o) => o.staffId === db.session);
+  function onbRecord() {
+    let o = myOnb();
+    if (!o) { o = { id: 'onb-' + db.session, staffId: db.session }; db.onboarding.push(o); }
+    return o;
+  }
+  const onbDoc = (kind, staffId = db.session) => db.staffDocs.filter((d) => d.staffId === staffId && d.onb === kind).sort((a, b) => b.date.localeCompare(a.date))[0];
+  function onbSteps(u) {
+    const o = myOnb() || {};
+    return {
+      details: !!(o.fullName && o.address && o.siaNumber && o.dvlaCode && o.licenceLast8),
+      docs: ONB_DOCS.every(([k]) => onbDoc(k)),
+      nda: !!(o.nda && o.nda.signature && o.nda.name),
+    };
+  }
+  function viewOnboarding() {
+    const u = me(); const st = onbSteps(u); const submitted = u.onboarding.status === 'submitted';
+    const tick = (ok) => `<span class="onb-tick ${ok ? 'ok' : ''}">${ok ? '✓' : ''}</span>`;
+    const step = (n, ok, title, sub, action) => `<button class="onb-step" ${submitted ? 'disabled' : `data-action="${action}"`}>
+      ${tick(ok)}<div><div class="onb-n">Step ${n}</div><b>${title}</b><div class="small muted">${sub}</div></div><span class="chev">${ic(I.right, 22)}</span></button>`;
+    return `<header class="topbar"><div class="topbar-inner"><span class="tb-btn"></span><h1>Welcome</h1><div class="tb-right"><button class="tb-btn" data-action="logout">Sign out</button></div></div></header>
+      <div class="page white"><div class="pad">
+        <h2 style="margin:6px 0 4px">Hi ${esc(u.name.split(' ')[0])}</h2>
+        ${submitted
+          ? `<div class="onb-done"><b>Thank you, your onboarding has been submitted.</b><p>Van Wyngaardt Global will check your documents and confirm. Your task appears in the app once you are approved, from 24 hours before it starts.</p><p class="small muted">Submitted ${fmtStamp(u.onboarding.submittedAt || new Date().toISOString())}</p></div>`
+          : `<p class="muted">Before your task appears in the app, please complete these steps. It takes about 5 minutes. Your documents are seen only by Van Wyngaardt Global.</p>`}
+        ${step(1, st.details, 'Your details', 'Name, address, SIA licence number and DVLA check code', 'onb-details')}
+        ${step(2, st.docs, 'Your documents', `${ONB_DOCS.filter(([k]) => onbDoc(k)).length} of ${ONB_DOCS.length} uploaded: SIA, first aid, driving licence, photo`, 'onb-docs')}
+        ${step(3, st.nda, 'Confidentiality agreement', 'Read and sign the VWG contractor NDA', 'onb-nda')}
+        ${submitted ? '' : `<button class="btn btn-gold btn-block" style="margin-top:18px" data-action="onb-submit" ${st.details && st.docs && st.nda ? '' : 'disabled'}>Submit to Van Wyngaardt Global</button>
+          <p class="small muted" style="text-align:center;margin-top:8px">${st.details && st.docs && st.nda ? 'All steps done.' : 'Complete all three steps to submit.'}</p>`}
+      </div></div>`;
+  }
+  function sheetOnbDetails() {
+    const o = myOnb() || {}; const u = me();
+    openSheet(`<h2>Your details</h2><form class="form">
+      <div class="field"><label>Full legal name</label><input class="input" name="fullName" value="${esc(o.fullName || u.name)}" required autocomplete="name"></div>
+      <div class="field"><label>Trading name or company (if any)</label><input class="input" name="tradingName" value="${esc(o.tradingName || '')}"></div>
+      <div class="field"><label>Home address</label><textarea class="input" name="address" required autocomplete="street-address">${esc(o.address || '')}</textarea></div>
+      <div class="field"><label>SIA licence number (16 digits)</label><input class="input" name="siaNumber" value="${esc(o.siaNumber || '')}" inputmode="numeric" required></div>
+      <div class="row"><div class="field"><label>DVLA check code</label><input class="input" name="dvlaCode" value="${esc(o.dvlaCode || '')}" required autocapitalize="characters"></div>
+        <div class="field"><label>Last 8 characters of your driving licence number</label><input class="input" name="licenceLast8" value="${esc(o.licenceLast8 || '')}" maxlength="8" required autocapitalize="characters"></div></div>
+      <p class="small muted" style="margin:0">Get a DVLA check code at <a href="https://www.gov.uk/view-driving-licence" target="_blank" rel="noopener">gov.uk/view-driving-licence</a> → "Share your licence information". It lasts 21 days.</p>
+      <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Save</button></form>`, (d) => {
+      const sia = d.siaNumber.replace(/\s+/g, '');
+      if (!/^\d{16}$/.test(sia)) return 'The SIA licence number has 16 digits';
+      if (d.licenceLast8.replace(/\s+/g, '').length !== 8) return 'Enter the last 8 characters of your driving licence number';
+      Object.assign(onbRecord(), { fullName: d.fullName.trim(), tradingName: d.tradingName.trim(), address: d.address.trim(),
+        siaNumber: sia, dvlaCode: d.dvlaCode.trim().toUpperCase(), licenceLast8: d.licenceLast8.replace(/\s+/g, '').toUpperCase(), updatedAt: new Date().toISOString() });
+      save(); closeSheet(); render(); toast('Details saved');
+    });
+  }
+  function sheetOnbDocs() {
+    openSheet(`<h2>Your documents</h2><p class="small muted">Take a clear photo of each one, or upload a PDF (under 1 MB). Only Van Wyngaardt Global sees them.</p>
+      ${ONB_DOCS.map(([k, label]) => { const d = onbDoc(k); return `<div class="onb-doc"><div><b>${label}</b><div class="small ${d ? '' : 'muted'}">${d ? '✓ Uploaded ' + dmy(new Date(d.date)) : 'Not uploaded yet'}</div></div>
+        <label class="btn btn-sm ${d ? 'btn-ghost' : 'btn-gold'}">${d ? 'Replace' : 'Upload'}<input type="file" class="onb-file" data-kind="${k}" accept="image/*,application/pdf" ${k === 'photo' ? 'capture="user"' : ''} hidden></label></div>`; }).join('')}
+      <button class="btn btn-block" style="margin-top:14px" data-dismiss>Done</button>`);
+  }
+  function sheetOnbNda() {
+    const o = myOnb() || {}; const u = me();
+    openSheet(`<h2>Confidentiality agreement</h2>
+      <p class="small">Read the VWG Contractor Non-Disclosure Agreement (${NDA_VERSION}). It protects our clients and their details.</p>
+      <a class="btn btn-ghost btn-block" href="${NDA_URL}" target="_blank" rel="noopener">Read the agreement (PDF)</a>
+      ${o.nda ? `<p class="small" style="margin-top:12px">✓ Signed by ${esc(o.nda.name)} on ${fmtStamp(o.nda.at)}. Signing again replaces it.</p>` : ''}
+      <form class="form" style="margin-top:10px">
+        <label class="check"><input type="checkbox" name="agree" required>I have read and agree to this Non-Disclosure Agreement</label>
+        <div class="field"><label>Your full name</label><input class="input" name="name" value="${esc(o.fullName || u.name)}" required></div>
+        <div class="field"><label>Signature (sign with your finger)</label><canvas class="sig" id="onb-sig"></canvas>
+          <button type="button" class="small muted" id="onb-sig-clear" style="align-self:flex-end;text-decoration:underline">Clear signature</button></div>
+        <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Sign the agreement</button></form>`, (d) => {
+      if (!d.agree) return 'Tick the box to agree';
+      if (!sig.signed()) return 'Please sign in the box';
+      onbRecord().nda = { agreed: true, name: d.name.trim(), signature: sig.data(), at: new Date().toISOString(), version: NDA_VERSION };
+      save(); closeSheet(); render(); toast('Agreement signed');
+    });
+    const sig = bindSignature($('#sheet-root #onb-sig'), $('#sheet-root #onb-sig-clear'));
+  }
+  function bindSignature(canvas, clearBtn) {
+    const ctx = canvas.getContext('2d'); const ratio = window.devicePixelRatio || 1;
+    canvas.width = canvas.clientWidth * ratio; canvas.height = canvas.clientHeight * ratio;
+    ctx.scale(ratio, ratio); ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.strokeStyle = '#111';
+    let drawing = false, signed = false;
+    const pos = (ev) => { const r = canvas.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; };
+    canvas.addEventListener('pointerdown', (ev) => { drawing = true; canvas.setPointerCapture(ev.pointerId); ctx.beginPath(); ctx.moveTo(...pos(ev)); });
+    canvas.addEventListener('pointermove', (ev) => { if (!drawing) return; ctx.lineTo(...pos(ev)); ctx.stroke(); signed = true; });
+    const end = () => { drawing = false; };
+    canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end);
+    clearBtn.addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); signed = false; });
+    return { signed: () => signed, data: () => canvas.toDataURL('image/png') };
+  }
+  async function onbSubmit() {
+    const u = me(); const st = onbSteps(u);
+    if (!(st.details && st.docs && st.nda)) { toast('Complete all three steps first'); return; }
+    u.onboarding = { ...u.onboarding, status: 'submitted', submittedAt: new Date().toISOString() };
+    save(); render(); toast('Submitted. Thank you');
+    try { await cloudPush(); await cloud.sb.functions.invoke('vwg-push', { body: { topic: 'onboarding' } }); } catch (e) { /* managers still see it in the app */ }
+  }
+  // Managers: review and approve
+  function sheetOnbReview(s) {
+    const o = db.onboarding.find((x) => x.staffId === s.id) || {};
+    const st = s.onboarding?.status || 'pending';
+    openSheet(`<h2>Onboarding · ${esc(s.name)}</h2>
+      <p><b>Status:</b> ${esc(st)}${s.onboarding?.submittedAt ? ` · submitted ${fmtStamp(s.onboarding.submittedAt)}` : ''}${s.jobOnly ? ' · job-only access' : ''}</p>
+      <div class="card" style="padding:10px 12px">
+        <div class="small"><b>Legal name:</b> ${esc(o.fullName || '-')}</div>
+        <div class="small"><b>Trading name:</b> ${esc(o.tradingName || '-')}</div>
+        <div class="small"><b>Address:</b> ${esc(o.address || '-')}</div>
+        <div class="small"><b>SIA licence:</b> ${esc(o.siaNumber || '-')}</div>
+        <div class="small"><b>DVLA check code:</b> ${esc(o.dvlaCode || '-')} · licence ends ${esc(o.licenceLast8 || '-')}</div>
+      </div>
+      <h3 style="margin:12px 0 6px">Documents</h3>
+      ${ONB_DOCS.map(([k, label]) => { const d = onbDoc(k, s.id); return `<div class="onb-doc"><div class="small"><b>${label}</b></div>${d ? `<a class="btn btn-ghost btn-sm" href="${d.data}" target="_blank" rel="noopener" download="${esc(d.fileName)}">View</a>` : '<span class="small muted">missing</span>'}</div>`; }).join('')}
+      <h3 style="margin:12px 0 6px">NDA</h3>
+      ${o.nda ? `<div class="small">Signed by <b>${esc(o.nda.name)}</b> on ${fmtStamp(o.nda.at)} (${esc(o.nda.version || '')})</div><img src="${o.nda.signature}" alt="Signature" style="width:100%;max-height:120px;object-fit:contain;border:1px solid #ddd;border-radius:8px;background:#fff;margin-top:6px">` : '<div class="small muted">Not signed</div>'}
+      ${st !== 'approved' ? `<button class="btn btn-gold btn-block" style="margin-top:14px" data-action="onb-approve" data-id="${s.id}">Approve onboarding</button>
+        <p class="small muted">Approving lets them see their task (job-only people: from 24 hours before it starts).</p>`
+        : `<p class="small" style="margin-top:12px">✓ Approved ${s.onboarding.approvedAt ? fmtStamp(s.onboarding.approvedAt) : ''}</p>`}`);
+  }
+
   // ---------- Run sheet (movements) and driver mode ----------
   // Movements come from Aegis with the job (site.movements). Everyone on the job sees them; a
   // driver (role SDD) lands here and gets big navigation buttons. Times are plans: the TL
@@ -895,7 +1030,7 @@
     const reg = await navigator.serviceWorker.ready;
     const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBytes(CONFIG.pushPublicKey) });
     const j = sub.toJSON();
-    const { error } = await cloud.sb.from('push_subscriptions').upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device: deviceLabel(), topics: me().isAdmin ? ['intel', 'brief', 'test'] : ['brief', 'test'] });
+    const { error } = await cloud.sb.from('push_subscriptions').upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device: deviceLabel(), topics: me().isAdmin ? ['intel', 'brief', 'test', 'onboarding'] : ['brief', 'test'] });
     if (error) { await sub.unsubscribe().catch(() => {}); throw new Error(error.message); }
   }
   async function pushOff() {
@@ -1125,7 +1260,7 @@
         <div class="card"><h3>Recent clock-ins</h3>${db.entries.slice().sort((a, b) => b.clockIn.localeCompare(a.clockIn)).slice(0, 8).map((e) => entryRow(e, true)).join('') || '<div class="empty">No activity yet.</div>'}</div>`;
     } else if (tab === 'staff') {
       body = `<button class="btn btn-gold btn-block" data-action="staff-new" style="margin-bottom:12px">${ic(I.plus, 18)}Add Staff Member</button>
-        <div class="card">${db.staff.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => `<button class="item" data-action="staff-edit" data-id="${s.id}">${avatar(s)}<div class="item-main"><div class="item-title">${esc(s.name)}${s.active ? '' : ' <span class="small muted">(inactive)</span>'}</div><div class="item-sub">${esc(s.empNo)} · ${esc(s.role)}${s.isAdmin ? ' · Admin' : ''}${!s.isAdmin && complianceIssues(s) ? ` · <b style="color:var(--red)">${complianceIssues(s)} compliance issue(s)</b>` : ''}</div></div><span class="chev">${ic(I.right, 20)}</span></button>`).join('')}</div>`;
+        <div class="card">${db.staff.slice().sort((a, b) => a.name.localeCompare(b.name)).map((s) => `<button class="item" data-action="staff-edit" data-id="${s.id}">${avatar(s)}<div class="item-main"><div class="item-title">${esc(s.name)}${s.active ? '' : ' <span class="small muted">(inactive)</span>'}</div><div class="item-sub">${esc(s.empNo)} · ${esc(s.role)}${s.isAdmin ? ' · Admin' : ''}${s.onboarding && s.onboarding.status !== 'approved' ? ` · <b style="color:var(--gold)">onboarding ${esc(s.onboarding.status)}</b>` : ''}${!s.isAdmin && complianceIssues(s) ? ` · <b style="color:var(--red)">${complianceIssues(s)} compliance issue(s)</b>` : ''}</div></div><span class="chev">${ic(I.right, 20)}</span></button>`).join('')}</div>`;
     } else if (tab === 'sites') {
       body = `<button class="btn btn-gold btn-block" data-action="site-new" style="margin-bottom:12px">${ic(I.plus, 18)}Add Site</button>
         <div class="card">${db.sites.map((s) => `<button class="item" data-action="site-edit" data-id="${s.id}"><div class="item-main"><div class="item-title">${esc(s.name)}</div><div class="item-sub">${esc(s.customer)} · ${esc(s.city)} · QR/NFC code <b>${esc(s.code)}</b> · ${s.lat != null ? `within ${s.radius || CONFIG.siteRadiusMetres} m of map position` : '<b style="color:var(--amber)">no map position: add one to check clock-on locations</b>'}</div></div><span class="chev">${ic(I.right, 20)}</span></button>`).join('') || '<div class="empty">No sites yet.</div>'}</div>`;
@@ -1285,6 +1420,7 @@
       ${CLOUD ? `<p class="small muted" style="margin:0">${isNew ? 'After saving, they open the app, tap <b>Forgot Password → New staff</b> and create their own password.' : ''}</p>
         ${isNew ? '' : `<button type="button" class="btn btn-ghost btn-block" data-action="send-reset" data-id="${s.id}">Email them a password reset link</button>`}`
       : `<div class="field"><label>${isNew ? 'Password' : 'New password (leave blank to keep)'}</label><input class="input" name="password" minlength="8" ${isNew ? 'required' : ''} placeholder="At least 8 characters"></div>`}
+      ${!isNew && s.onboarding ? `<button type="button" class="btn btn-block ${s.onboarding.status === 'submitted' ? 'btn-gold' : 'btn-ghost'}" data-action="onb-review" data-id="${s.id}">Onboarding: ${esc(s.onboarding.status)}${s.onboarding.status === 'submitted' ? ' · review and approve' : ''}</button>` : ''}
       <label class="check"><input type="checkbox" name="isAdmin" ${s.isAdmin ? 'checked' : ''}>Admin access</label>
       <label class="check"><input type="checkbox" name="active" ${s.active ? 'checked' : ''}>Active (can sign in)</label>
       <div class="error"></div><button class="btn btn-gold btn-block" type="submit">Save</button>
@@ -1462,7 +1598,7 @@
   // `records` table (see supabase/schema.sql), which also enforces who may change what.
   // The copy in localStorage keeps the app usable offline; unsent changes are retried.
   const SYNCED = ['staff', 'sites', 'shifts', 'entries', 'leave', 'incidents', 'occurrences', 'documents',
-    'docReads', 'messages', 'register', 'welfare', 'trainingDone', 'training', 'support', 'staffDocs'];
+    'docReads', 'messages', 'register', 'welfare', 'trainingDone', 'training', 'support', 'staffDocs', 'onboarding'];
   const SYNCED_KEY = STORE_KEY + '-synced';
   const cloud = { sb: null, synced: {}, pushTimer: null, pushing: null, renderWanted: false, channel: null };
   try { cloud.synced = JSON.parse(localStorage.getItem(SYNCED_KEY) || '{}'); } catch (e) { cloud.synced = {}; }
@@ -1933,6 +2069,8 @@
     if (!db.onboarded) { app.innerHTML = viewOnboarding(); bindSwipe(); return; }
     const u = me();
     if (!u || !u.active) { db.session = null; app.innerHTML = viewLogin(); bindLogin(); return; }
+    if (needsOnboarding(u)) { app.innerHTML = viewOnboarding(); return; }
+    if (u.jobOnly && JOB_ONLY_HIDDEN.includes(ui.route)) ui.route = 'home';
     if (ui.route === 'admin' && !u.isAdmin) ui.route = 'home';
     if (!ui.landed) { ui.landed = true; if (ui.route === CONFIG.startPage && !u.isAdmin && isDriver()) ui.route = 'runsheet'; }
     // Deep link from a "brief ready" phone alert: index.html?open=briefs
@@ -2020,6 +2158,19 @@
     const file = ev.target.files?.[0];
     if (ev.target.id === 'support-file' && file) {
       try { sendSupport('', await resizePhoto(file, 900, false)); } catch (e) { toast('Could not read that image'); }
+      return;
+    }
+    if (ev.target.classList?.contains('onb-file') && file) {
+      const kind = ev.target.dataset.kind; const isImg = file.type.startsWith('image/');
+      if (!isImg && file.size > 1024 * 1024) { toast('PDFs must be under 1 MB: take a photo instead'); return; }
+      try {
+        const data = isImg ? await resizePhoto(file, kind === 'photo' ? 900 : 1600, false) : await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+        db.staffDocs = db.staffDocs.filter((d) => !(d.staffId === db.session && d.onb === kind));
+        const label = ONB_DOCS.find(([k]) => k === kind)[1];
+        db.staffDocs.push({ id: 'onbdoc-' + db.session + '-' + kind, staffId: db.session, onb: kind, name: label, kind: isImg ? 'Image' : 'PDF', fileName: kind + (isImg ? '.jpg' : '.pdf'), data, date: new Date().toISOString() });
+        if (kind === 'photo' && isImg) me().photo = await resizePhoto(file);
+        save(); closeSheet(); sheetOnbDocs(); render(); toast('Uploaded');
+      } catch (e) { toast('Could not read that file'); }
       return;
     }
     if (ev.target.id === 'mydoc-file' && file) {
@@ -2194,6 +2345,14 @@
       case 'brief-open': openBrief(id).catch((e) => toast(e.message)); break;
       case 'file-open': if (['jobdocs', 'briefs'].includes(btn.dataset.bucket)) openBrief(id, btn.dataset.bucket).catch((e) => toast(e.message)); break;
       case 'briefs-refresh': ui.briefs = null; render(); loadBriefs(); break;
+      case 'onb-details': sheetOnbDetails(); break;
+      case 'onb-docs': sheetOnbDocs(); break;
+      case 'onb-nda': sheetOnbNda(); break;
+      case 'onb-submit': onbSubmit(); break;
+      case 'onb-review': closeSheet(); sheetOnbReview(staffById(id)); break;
+      case 'onb-approve': { const t = staffById(id); if (!t || !me().isAdmin) break;
+        t.onboarding = { ...(t.onboarding || {}), status: 'approved', approvedAt: new Date().toISOString(), approvedBy: db.session };
+        save(); closeSheet(); render(); toast(`${t.name.split(' ')[0]} approved`); break; }
       case 'push-setup': sheetPush().catch((e) => toast(e.message)); break;
       case 'push-on': try { btn.disabled = true; await pushOn(); toast('Alerts on. Sending a test…'); await pushTest(); closeSheet(); } catch (e) { toast(e.message); btn.disabled = false; } break;
       case 'push-test': try { const r = await pushTest(); toast(r && r.sent ? 'Test sent' : 'No device received it'); } catch (e) { toast(e.message); } break;

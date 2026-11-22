@@ -89,7 +89,10 @@ async function operatorsSync(body: any) {
     };
     const base = { id, color: COLORS[i % COLORS.length], photo: null, emergency: "", address: "", leaveAllowance: 0,
       pin: String(1000 + Math.floor(Math.random() * 9000)), startDate: new Date().toISOString().slice(0, 10), rate: 0 };
-    const data = { ...base, ...(old?.data || {}), ...fields };
+    const data: any = { ...base, ...(old?.data || {}), ...fields };
+    // Job-only people (e.g. a supplier's driver) must finish onboarding in the app (documents + NDA)
+    // and be approved by a manager before they see any job.
+    if (o.jobOnly === true && !data.onboarding) data.onboarding = { status: "pending" };
     await sql`insert into public.records (collection, id, data) values ('staff', ${id}, ${sql.json(data)})
       on conflict (collection, id) do update set data = excluded.data`;
     old ? updated++ : created++;
